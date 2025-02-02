@@ -1,13 +1,24 @@
+#!/usr/bin/env python3 q
+import random
+
 GRID_SIZE = 3
-MAX_GRID_COMBINATIONS = 19683
+MAX_GRID_COMBINATIONS = 19683 # this is technically more than needed
 PLAYER1 = 'X'
 PLAYER2 = 'O'
+HUMAN = 'h'
+TEACHER = 't'
+MACHINE_LEARNER = 'm'
+LEARNING_RATE = 0.1
+NUM_TEACHER_EXAMPLES = 50
+NUM_INDIRECT_LEARNING = 50
 
 class Hash_Node:
     def __init__(self):
         self.guess
-class Train: # runs minmax algorithm
+
+class Train_DATA_SET: # runs minmax algorithm
     def __init__(self, plyr):
+        global MAX_GRID_COMBINATIONS, PLAYER1, PLAYER2
         self.player = plyr # 1 = p1, 2 = p2
         if plyr == 1:
             self.playerPiece = PLAYER1
@@ -18,10 +29,14 @@ class Train: # runs minmax algorithm
         else:
             print('Error [Train]: incorrect player piece')
             exit()
-        self.hash_answer = [[-1,0] for _ in range(19683)] # for each hash [move, move value]
+        
+        # saving all move options to a hash value
+        self.hash_answer = [[-1,0] for _ in range(MAX_GRID_COMBINATIONS)] # for each hash [move, move value]
                         
-    def has_winner(self, grid, lastMove, plyr):
+    def has_winner(self, grid, lastMove):
+        global GRID_SIZE
         x, y = lastMove
+        plyr = grid[y][x]
         countx = 0
         county = 0
         cntdiag1 = 0
@@ -51,63 +66,157 @@ class Train: # runs minmax algorithm
                 val = 0
                 if c == self.playerPiece: # player
                     val = 1
-                elif c != '': # opponent
+                elif c == self.oppPiece: # opponent
                     val = 2
-                total += val + multi * 3
-            multi += 1
+                total += val * 3 ** multi
+                multi += 1
         return total    
-    def gen_train_values(self, grid, lastMove, maxf = True): #maxf : T = max, F = min
-        # find winner. If not run next level of min max algorithm
-        hashVal = grid_hash(grid) # check to see if we already found a value for this branch
-        if self.hash_answer[hashVal][0] != -1:
+
+    def gen_train_values(self, grid, lastMove, maxf = True, depth = 0): #maxf : T = max, F = min
+        hashVal = self.grid_hash(grid)
+        if self.hash_answer[hashVal][0] != -1:  # check to see if we already found a value for this branch
             return self.hash_answer[hashVal][1]
-        if self.has_winner(grid, lastMove):
-            if not maxf:
-                self.hash_answer[hashVal] = [-2,100] # -2 cause there is no move option for a winner
-                return 100
-            else:
+        if lastMove[0] >= 0 and self.has_winner(grid, lastMove): # find winner. If not run next level of min max algorithm
+            if maxf:
                 self.hash_answer[hashVal] = [-2,-100] # -2 cause there is no move option for a winner
                 return -100
+            else:
+                self.hash_answer[hashVal] = [-2,100] # -2 cause there is no move option for a winner
+                return 100
+        
+        # running the min/max algorithm
         mVal = 0
-        mMove = -1
+        mMove = -2
         for y,r in enumerate(grid):
-            for x,c in enumerate(grid):
+            for x,c in enumerate(r):
                 if c == ' ':
                     if maxf:
                         grid[y][x] = self.playerPiece
                     else:
                         grid[y][x] = self.oppPiece
-                    genVal = gen_train_value(grid, [x,y], (not maxf)))
+                    genVal = 0.9 * self.gen_train_values(grid, [x,y], (not maxf), depth + 1)
+                    if mMove == -2:
+                        mMove = 3*y+x
+                        mVal = genVal
+                    elif maxf and mVal < genVal: # for p1 we want to find the max()
+                        mMove = 3*y+x
+                        mVal = genVal
+                    elif not maxf and mVal > genVal: #for p2 we want to find the min()
+                        mMove = 3*y+x
+                        mVal = genVal
                     grid[y][x] = ' '
-                    if mMove = -1:
-                        mMove = 3*y+x
-                        mVal = genVal
-                    elif maxf and mVal < genVal:
-                        mMove = 3*y+x
-                        mVal = genVal
-                    elif not maxf and mVal > genVal:
-                        mMove = 3*y+x
-                        mVal = genVal 
-        self.hash_answer[hashVal] = [mMove, mVal]
+        self.hash_answer[hashVal] = [mMove, mVal] # all possible values are saved in a grid
         return mVal
 
-    def start_traing_map:
-        grid = [[' ' for _ in range(GRID_SIZE] for _ in range(GRID_SIZE)]
-        
+    def start_traing_map(self):
+        global GRID_SIZE
+        grid = [[' ' for _ in range(GRID_SIZE)] for _ in range(GRID_SIZE)]
+        self.gen_train_values(grid, [-1,-1])
+
     def make_option(self, grid):
-        hashVal = grid_hash(grid)
-        moveVal = self.hash_answer[hashVal]
-        y = int(moveVal/3)
-        x = moveVal%3
-        return x, y
+        hashVal = self.grid_hash(grid)
+        moveVal = self.hash_answer[hashVal][0]
+        if moveVal < 0:
+            print('error did not generate move for this grid')
+            exit()
+        y = int(moveVal / 3)
+        x = moveVal % 3
+        return x, y   
+
+    def get_teacher_examples(self):
+        global GRID_SIZE, NUM_TEACHER_EXAMPLES
+        cnt = 0
+        draws = 25
+        interState = 15
+        endState = 25
+        beginingState = 10 
+        while cnt < NUM_TEACHER_EXAMPLES:
+            rand = random.randint(1, MAX_GRID_COMBINATIONS)
+
+            if self.hash_answer[rand][0] == -1: # not a real grid
+                continue
+            boardHash = [0 for _ in GRID_SIZE * GRID_SIZE]
+            cnt = 0
+            while hashNum > 0:
+                piece = hashNum % 3
+                boardHash[cnt] = piece
+                hashNum /= 3
+                cnt +=1
 
 
-TRAIN = Train(1)
+class ML_Model:
+    def __int__(self, teacher = True):
+        global GRID_SIZE
+        n = GRID_SIZE * GRID_SIZE
+        self.MLWeights = [random.random(-1/n,1/n) for _ in range(GRID_SIZE * GRID_SIZE)]
+        self.teacher = teacher
+
+    def train_teacher_set(self, trainSet):
+        global GRID_SIZE, LEARNING_RATE
+        for q, a in trainSet:
+            # taking in the grid and creating a xi values
+            Xlist = [0 for _ in range(GRID_SIZE * GRID_SIZE)]
+            index = 0
+            for s in q:
+                xi = 0
+                if c == 1:
+                    xi = 1
+                elif c == 2:
+                    xi = -1
+                Xlist[index] = xi
+            
+            # calculating v_hat
+            vHatVal = 0       
+            for i,weight in enumerate(self.MLWeights):
+                vHatVal += Xlist[i] * weight
+            
+            # updating weight values
+            for i,weight in enumerate(self.MLWeights):
+                self.MLWeights[i] = weight + LEARNING_RATE * (a - vHatVal) * Xlist[i]
+
+    def train_non_teacher_set(self, moveList, win, first):
+        global GRID_SIZE, LEARNING_RATE
+        board = [' ' for _ in range(GRID_SIZE * GRID_SIZE)]
+        player = 'X'
+        opp = 'O'
+        a = 0
+        if win:
+            a = 100
+        else:
+            a = -100
+        
+        for move in moveList:
+            if first:
+                board[move] = player
+                # taking in the grid and creating a xi values
+                Xlist = [0 for _ in range(GRID_SIZE * GRID_SIZE)]
+                for i,s in enumerate(board):
+                    xi = 0
+                    if s == player:
+                        xi = 1
+                    elif s != ' ':
+                        xi = -1
+                    Xlist[i] = xi
+                
+                # calculating v_hat
+                vHatVal = 0       
+                for i,weight in enumerate(self.MLWeights):
+                    vHatVal += Xlist[i] * weight
+                
+                # updating weight values
+                for i,weight in enumerate(self.MLWeights):
+                    self.MLWeights[i] = weight + LEARNING_RATE * (a - vHatVal) * Xlist[i]
+            else:
+                board[move] = opp
+
+    
+
 class Player_Manager:
-    def __init__(self, player1='h', player2='t'): # h = human, t = trainer, m = machine learner
+    def __init__(self, player1, player2): # h = human, t = trainer, m = machine learner
         self.p1=player1
         self.p2=player2
     def make_move(self, grid, player):
+        global TEACHER, HUMAN, MACHINE_LEARNER
         playermove = ''
         playertype = ''
         if player == 1:
@@ -117,10 +226,14 @@ class Player_Manager:
         else:
             print('invalid player')
             exit()
-        if playertype == 'h':
+        if playertype == HUMAN:
             return self.human_select()
-        else: # need logic for this
+        elif playertype == TEACHER:
             return TRAIN.make_option(grid)
+        elif playertype == MACHINE_LEARNER:
+            tmp == True # need logic for this
+        else:
+            print('Player Manager Error: unknown player for ' + str(playertype))
                         
     def human_select(self):
         col = get_user_input('select col: ')
@@ -129,16 +242,34 @@ class Player_Manager:
         
 class tictactoe_Game:
     def __init__(self):
-        self.grid =[ [ ' ' for _ in range(GRID_SIZE) ] for _ in range(GRID_SIZE) ]
+        self.reset_grid()
         self.playerTurn=1
+    
+    def reset_grid(self):
+        global GRID_SIZE
+        self.grid =[ [ ' ' for _ in range(GRID_SIZE) ] for _ in range(GRID_SIZE) ]
+
     def play_turn(self):
-        x, y = PLAYER_MANAGER.make_move(self.grid, self.playerTurn)
+        global PLAYER1, PLAYER2
+        invalid = True
+        failedCnt = 0
+        while invalid:
+            if failedCnt > 5:
+                print('error selecting input. Timing out.')
+                exit()
+            x, y = PLAYER_MANAGER.make_move(self.grid, self.playerTurn)
+            if x < 0 or x > GRID_SIZE or y < 0 or y > GRID_SIZE or self.grid[y][x] != ' ':
+                get_user_raw_input('Invalid input, try again...')
+            else:
+                invalid = False
+            failedCnt += 1
         mv = PLAYER1
         if self.playerTurn == 2:
             mv = PLAYER2
         self.grid[y][x] = mv
         return self.check_winner([x,y], mv)
     def check_winner(self, lastMove, plyr):
+        global GRID_SIZE
         x, y = lastMove
         countx = 0
         county = 0
@@ -166,23 +297,39 @@ class tictactoe_Game:
             print( ' | '.join(r))
         print()
     def run_game(self):
-        while True:
-            self.print_grid()
-            winner = self.play_turn()
-            if winner:
+        playAgain = True
+        while playAgain:
+            cnt = 0
+            while cnt < 9:
                 self.print_grid()
-                print('player ' + str(self.playerTurn) + ' wins!')
-                break
-            self.playerTurn = (self.playerTurn%2) + 1
+                winner = self.play_turn()
+                if winner:
+                    self.print_grid()
+                    print('Player ' + str(self.playerTurn) + ' Wins!')
+                    break
+                self.playerTurn = (self.playerTurn%2) + 1
+                cnt += 1
+            if cnt == 9:
+                self.print_grid()
+                print('Tie')
 
+            usrInput = -1
+            while usrInput != 1 and usrInput != 2:
+                print('Play again?   1: Yes | 2: No')
+                usrInput = get_user_input ('> ')
+                playAgain = (usrInput == 1)
 def get_user_input(txt):
     return int(input(txt))
-    
-PLAYER_MANAGER= Player_Manager()
+def get_user_raw_input(txt):
+    return input(txt)
+
+
+PLAYER_MANAGER= Player_Manager('h', 't')
+TRAIN = Train_DATA_SET(1)
 
 if __name__ == '__main__':
     print('creating training map')
-    TRAIN.gen_train_values
+    TRAIN.start_traing_map()
     print('finished creating training map')
     game = tictactoe_Game()
     game.run_game()
