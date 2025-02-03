@@ -8,9 +8,9 @@ PLAYER2 = 'O'
 HUMAN = 'h'
 TEACHER = 't'
 MACHINE_LEARNER = 'm'
-LEARNING_RATE = 0.1
-NUM_TEACHER_EXAMPLES = 50
-NUM_INDIRECT_LEARNING = 50
+LEARNING_RATE = 0.5
+NUM_TEACHER_EXAMPLES = 100
+NUM_INDIRECT_LEARNING = 100
 
 class Hash_Node:
     def __init__(self):
@@ -94,7 +94,7 @@ class Train_DATA_SET: # runs minmax algorithm
                         grid[y][x] = self.playerPiece
                     else:
                         grid[y][x] = self.oppPiece
-                    genVal = 0.9 * self.gen_train_values(grid, [x,y], (not maxf), depth + 1)
+                    genVal = self.gen_train_values(grid, [x,y], (not maxf), depth + 1)
                     if mMove == -2:
                         mMove = 3*y+x
                         mVal = genVal
@@ -123,32 +123,72 @@ class Train_DATA_SET: # runs minmax algorithm
         x = moveVal % 3
         return x, y   
 
-    def get_teacher_examples(self):
+    def gen_teacher_examples(self):
         global GRID_SIZE, NUM_TEACHER_EXAMPLES
-        cnt = 0
-        draws = 25
-        interState = 15
-        endState = 25
-        beginingState = 10 
-        while cnt < NUM_TEACHER_EXAMPLES:
-            rand = random.randint(1, MAX_GRID_COMBINATIONS)
-
-            if self.hash_answer[rand][0] == -1: # not a real grid
+        examples = []
+        exampleCnt = 0
+        draws = 0.45 * NUM_TEACHER_EXAMPLES
+        interState = 0.40 * NUM_TEACHER_EXAMPLES
+        endState = 0.40 * NUM_TEACHER_EXAMPLES
+        beginingState = 0.20 * NUM_TEACHER_EXAMPLES 
+        while exampleCnt < NUM_TEACHER_EXAMPLES:
+            hashNum = random.randint(1, MAX_GRID_COMBINATIONS - 1)
+            if self.hash_answer[hashNum][0] == -1: # not a real grid
                 continue
-            boardHash = [0 for _ in GRID_SIZE * GRID_SIZE]
+            Vtrain = self.hash_answer[hashNum][1]
+            boardHash = [0 for _ in range(GRID_SIZE * GRID_SIZE)]
             cnt = 0
+            p1cnt = 0
+            p2cnt = 0
+            empty = 0
             while hashNum > 0:
                 piece = hashNum % 3
+                if piece == 1:
+                    p1cnt += 1
+                elif piece == 2:
+                    p2cnt += 1
+                else:
+                    empty += 1
                 boardHash[cnt] = piece
-                hashNum /= 3
+                hashNum = int(hashNum/3)
                 cnt +=1
+            player = 1
+            if p1cnt != p2cnt:
+                player = 2
+                Vtrain *= -1
+                boardHash = [(x*2)%3 for x in boardHash] # quick fix to swap the 1 and 2s
+            
+            #checking distribution of examples
+            if empty <=3:
+                if endState == 0:
+                    continue
+                if Vtrain == 0:
+                    if draws == 0:
+                        continue
+                    draws -= 1
+                endState -= 1
+            elif empty >=7:
+                if beginingState == 0:
+                    continue
+                beginingState -= 1
+            else:
+                if interState == 0:
+                    continue
+                interState -= 1
+            examples.append([boardHash, Vtrain])
+            #print('adding ' + str(boardHash) + ' ' + str(Vtrain))
+            exampleCnt += 1
+        return examples
+            
+
 
 
 class ML_Model:
-    def __int__(self, teacher = True):
+    def __init__(self, teacher = True):
         global GRID_SIZE
         n = GRID_SIZE * GRID_SIZE
-        self.MLWeights = [random.random(-1/n,1/n) for _ in range(GRID_SIZE * GRID_SIZE)]
+        self.MLWeights = [random.uniform(-1/n,1/n) for _ in range(GRID_SIZE * GRID_SIZE)]
+        print(self.MLWeights)
         self.teacher = teacher
 
     def train_teacher_set(self, trainSet):
@@ -159,9 +199,9 @@ class ML_Model:
             index = 0
             for s in q:
                 xi = 0
-                if c == 1:
+                if s == 1:
                     xi = 1
-                elif c == 2:
+                elif s == 2:
                     xi = -1
                 Xlist[index] = xi
             
@@ -173,6 +213,8 @@ class ML_Model:
             # updating weight values
             for i,weight in enumerate(self.MLWeights):
                 self.MLWeights[i] = weight + LEARNING_RATE * (a - vHatVal) * Xlist[i]
+        print ('weights')
+        print(self.MLWeights)
 
     def train_non_teacher_set(self, moveList, win, first):
         global GRID_SIZE, LEARNING_RATE
@@ -199,7 +241,7 @@ class ML_Model:
                     Xlist[i] = xi
                 
                 # calculating v_hat
-                vHatVal = 0       
+                vHatVal = 0
                 for i,weight in enumerate(self.MLWeights):
                     vHatVal += Xlist[i] * weight
                 
@@ -208,8 +250,34 @@ class ML_Model:
                     self.MLWeights[i] = weight + LEARNING_RATE * (a - vHatVal) * Xlist[i]
             else:
                 board[move] = opp
+    def convert_board(self, board, player):
+        global GRID_SIZE
+        xi = [0 for _ in range(GRID_SIZE * GRID_SIZE)]
+        count = 0
+        for r in board:
+            for c in r:
+                if c == player:
+                    xi[count] = 1
+                if c != ' ':
+                    xi[count] = -1
+                count += 1
+        return xi
 
-    
+    def make_option (self, board, player):
+        global GRID_SIZE
+        bestMove = -1
+        bestValue = 0
+        xi = self.convert_board(board, player)
+        for index, x in enumerate(xi):
+            if x != 0:
+                continue
+            xi[index] = 1
+            vHatVal = sum([xi[i] * self.MLWeights[i] for i in range(GRID_SIZE * GRID_SIZE)])
+            if bestMove == -1 or vHatVal > bestValue:
+                bestValue = vHatVal
+                bestMove = index
+        return [bestMove%3, int(bestMove/3)]
+
 
 class Player_Manager:
     def __init__(self, player1, player2): # h = human, t = trainer, m = machine learner
@@ -231,7 +299,7 @@ class Player_Manager:
         elif playertype == TEACHER:
             return TRAIN.make_option(grid)
         elif playertype == MACHINE_LEARNER:
-            tmp == True # need logic for this
+            return ML.make_option(grid, player)
         else:
             print('Player Manager Error: unknown player for ' + str(playertype))
                         
@@ -259,7 +327,7 @@ class tictactoe_Game:
                 exit()
             x, y = PLAYER_MANAGER.make_move(self.grid, self.playerTurn)
             if x < 0 or x > GRID_SIZE or y < 0 or y > GRID_SIZE or self.grid[y][x] != ' ':
-                get_user_raw_input('Invalid input, try again...')
+                get_user_raw_input('Invalid input for (' + str(x) + ',' + str(y) + '), try again...')
             else:
                 invalid = False
             failedCnt += 1
@@ -324,12 +392,16 @@ def get_user_raw_input(txt):
     return input(txt)
 
 
-PLAYER_MANAGER= Player_Manager('h', 't')
+PLAYER_MANAGER= Player_Manager(HUMAN, MACHINE_LEARNER)
 TRAIN = Train_DATA_SET(1)
+ML = ML_Model()
 
 if __name__ == '__main__':
     print('creating training map')
     TRAIN.start_traing_map()
     print('finished creating training map')
+    print('generating training examples')
+    ML.train_teacher_set(TRAIN.gen_teacher_examples())
+    print('finish generating training examples')
     game = tictactoe_Game()
     game.run_game()
