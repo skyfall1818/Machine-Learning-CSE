@@ -1,2 +1,3 @@
-# Machine-Learning-CSE
-this is the assignments for CSE5693
+# Machine-Learning-CSE5693
+# Author: Phi Duong
+This is the assignments for CSE5693
