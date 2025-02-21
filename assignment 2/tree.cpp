@@ -1,17 +1,22 @@
 #include <stdio.h>
+#include <stdlib.h>
+#include <cstdlib>
 #include <fstream>
 #include <iostream>
 #include <sstream>
 #include <math.h>
 #include <string>
+#include <cstring>
 #include <vector>
 
 using namespace std;
 
 //linked list tree
+// for leaf nodes: value is the target result and nxtAttribute is the count output
 typedef struct node{
-    string value;
-    string nxtAttribute;
+    char* parentAttribute;
+    char* value;
+    char* nxtAttribute;
     struct node* nextBranch;
     struct node* childHead;
 } Node;
@@ -151,45 +156,73 @@ class Tree{
             return bestAttr;
         }
         
-        Node* Make_Tree(vector<Instance*> instances, string instanceValue){
-            cout << "Instances: " << instances.size() << endl;
-            Node* tempNode;
-            Node* nxtNode;
-            Node* newNode = (Node*)malloc(sizeof(Node));
-            bool allSame = true;
-            bool emptyAttribute = true;
-            string targetTest = "";
+        string Get_Majority(vector<Instance*> instances){ 
+            int highest = 0;
+            int bestValue = 0;
+            for (int i = 0; i < TO.results.size(); i++){
+                int count = 0;
+                for (int j = 0; j < instances.size(); j++){
+                    if (instances[j]->finalResult.compare(TO.results[i]) == 0){
+                        count++;
+                    }
+                }
+                if (count > highest){
+                    highest = count;
+                    bestValue = i;
+                }
+            }
+            return TO.results[bestValue];
+        }
 
+        Node* Create_leaf_Node(vector<Instance*> instances, string value){
+            int cnt[TO.results.size()];
+            string result = "(";
+            for (int i = 0; i < TO.results.size(); i++){
+                cnt [i] = 0;
+            }
+            for (int i = 0; i < instances.size(); i++){
+                for (int r = 0; r < TO.results.size(); r++){
+                    if (instances[i]->finalResult.compare(TO.results[r]) == 0){
+                        cnt[r]++;
+                        break;
+                    }
+                }
+            }
+            for (int i = 0; i < TO.results.size(); i++){
+                result += to_string(cnt[i]);
+                if (i+1 < TO.results.size()){
+                    result += ",";
+                }
+            }
+            result += ")";
+
+            Node* leafNode = (Node*)malloc(sizeof(Node));
+            leafNode->childHead = NULL;
+            leafNode->nextBranch = NULL;
+            leafNode->parentAttribute = NULL;
+
+            leafNode->nxtAttribute = (char*)malloc(result.length()*sizeof(char));
+            strcpy(leafNode->nxtAttribute, result.c_str());
+
+            leafNode->value = (char*)malloc(value.length()*sizeof(char));
+            strcpy(leafNode->value, value.c_str());
+
+            return leafNode;
+        }
+        
+        bool Check_Empty_Attribute(vector<Instance*> instances, Node* newNode, string parentMajorityTarget){
             // Check if all attributes have been used. take the most common target value
             for (int i = 0; i < AO.attributes.size(); i++){
                 if (!AO.attributes[i].used){ 
-                    emptyAttribute = false;
-                    break;
+                    return false;
                 }
             }
-            if (emptyAttribute){
-                //majority vote
-                int highest = 0;
-                string bestValue = "";
-                for (int i = 0; i < TO.results.size(); i++){
-                    int count = 0;
-                    for (int j = 0; j < instances.size(); j++){
-                        if (instances[j]->finalResult.compare(TO.results[i]) == 0){
-                                count++;
-                        }
-                    }
-                    if (count > highest){
-                        highest = count;
-                        bestValue = TO.results[i];
-                    }
-                }
+            newNode->childHead = Create_leaf_Node(instances, parentMajorityTarget.c_str());
+            return true;
+        }
 
-                newNode->childHead = NULL;
-                newNode->nextBranch = NULL;
-                newNode->value = bestValue;
-                newNode->nxtAttribute = "";
-                return newNode;
-            }
+        bool Check_Same_Target(vector<Instance*> instances, Node* newNode){
+            string targetTest = "";
 
             // Check if all instances have the same target
             for (int i = 0; i < instances.size(); i++){
@@ -197,29 +230,50 @@ class Tree{
                     targetTest = instances[i]->finalResult;
                 }
                 else if (targetTest.compare(instances[i]->finalResult) != 0){
-                    allSame = false;
+                    return false;
                 }
             }
-            if (allSame){ // If leaf node. nxtAttribute is empty
-                newNode->childHead = NULL;
-                newNode->nextBranch = NULL;
-                newNode->value = targetTest;
-                newNode->nxtAttribute = "";
-                return newNode;
-            };
+            newNode->childHead = Create_leaf_Node(instances, targetTest);
 
-            
-            cout << "test" << endl;
+            return true;
+        }
+
+        Node* Make_Tree(vector<Instance*> instances, string parentAttribute, string instanceValue, string parentMajorityTarget){
+            Node* tempNode;
+            Node* nxtNode;
+
+            // initializing current node
+            Node* newNode = (Node*)malloc(sizeof(Node));
+
+            newNode->parentAttribute = (char*)malloc(parentAttribute.length()*sizeof(char));
+            strcpy(newNode->parentAttribute, parentAttribute.c_str());
+
+            newNode->value = (char*)malloc(instanceValue.length()*sizeof(char));
+            strcpy(newNode->value, instanceValue.c_str());
+
             int attributeIndex = Find_Best_Attribute(instances);
-            cout << "value: " << instanceValue << endl;
-            newNode->value = instanceValue;
-            cout << "done" << endl;
+            newNode->nxtAttribute = (char*)malloc(AO.attributes[attributeIndex].name.length()*sizeof(char));
+            strcpy(newNode->nxtAttribute, AO.attributes[attributeIndex].name.c_str());
+            
             newNode->childHead = NULL;
             newNode->nextBranch = NULL;
-            cout<<"attributeIndex: " << attributeIndex << endl;
-            cout<<"attributeVal: " << AO.attributes[attributeIndex].name << endl;
-            newNode->nxtAttribute = AO.attributes[attributeIndex].name;
-            cout<< "test" << endl;
+            
+            if (newNode == NULL) {
+                std::cerr << "Memory allocation failed" << std::endl;
+                exit(1);
+            }
+
+            if (instances.size() == 0){
+                newNode->childHead = Create_leaf_Node(instances, parentMajorityTarget);
+                return newNode;
+            }
+
+            if (Check_Empty_Attribute(instances, newNode, parentMajorityTarget) || Check_Same_Target(instances, newNode)){
+                return newNode;
+            }
+
+            string currentMajority = Get_Majority(instances);
+
             for (int j = 0; j < AO.attributes[attributeIndex].values.size(); j++){
                 //cout << "j:" << j << endl;
                 vector<Instance*> subset;
@@ -229,7 +283,7 @@ class Tree{
                     }
                 }
                 AO.attributes[attributeIndex].used = true;
-                nxtNode = Make_Tree(subset, AO.attributes[attributeIndex].values[j]);
+                nxtNode = Make_Tree(subset, AO.attributes[attributeIndex].name,AO.attributes[attributeIndex].values[j], currentMajority);
                 AO.attributes[attributeIndex].used = false;
                 if (newNode->childHead == NULL){
                     newNode->childHead = nxtNode;
@@ -242,24 +296,49 @@ class Tree{
             }
             return newNode;
         }
-        void Tree_Print_Recursive(Node* node, string indent){
-            cout << indent <<node->value << endl;
+
+        void Tree_Print_Recursive(Node* node, string indent, bool first = true){
+            if (!first){
+                cout << indent << node->parentAttribute << " = "<< node->value;
+                if (node->childHead->childHead == NULL){
+                    cout << " : " << node->childHead->value << " " << node->childHead->nxtAttribute << endl;
+                    return;
+                }
+                cout << endl;
+                indent += "|   ";
+            }
+
             Node* tempNode = node->childHead;
             while (tempNode != NULL){
-                Tree_Print_Recursive(tempNode, indent + "|   ");
+                Tree_Print_Recursive(tempNode, indent, false);
                 tempNode = tempNode->nextBranch;
             }
         }
         
     public:
         Tree(AttributeOptions* attrOptions, TargetOptions* targetOptions){
-
-                // Create a new branch
             AO = *attrOptions;
             TO = *targetOptions;
             treeHead = NULL;
-            // for testing purposes
-            // printint out the attributes and targets forom reading the file
+        }
+
+        void Learn(vector<Instance> instances){
+            vector<Instance*> set;
+            for (int i = 0; i< instances.size(); i++){
+                set.push_back(&instances[i]);
+            }
+            treeHead = Make_Tree(set, "" , "", Get_Majority(set));
+        }
+
+        void Print_Tree(){
+            if (treeHead == NULL){
+                return;
+            }
+            Tree_Print_Recursive(treeHead, "");
+        }
+
+        // These are for testing purposes
+        void Print_Attributes(){
             cout << "------------Attributes------------" << endl;
             cout << "Attributes: "<<  AO.attributes.size() << endl;
             for (int i = 0; i < AO.attributes.size(); i++){
@@ -269,6 +348,9 @@ class Tree{
                 }
                 cout << endl;
             }
+        }
+
+        void Print_Targets(){
             cout << "------------Targets------------" << endl;
             cout << "Targets: "<<  TO.results.size() << endl;
             cout << TO.name << ": ";
@@ -276,20 +358,6 @@ class Tree{
                 cout << TO.results[i] << " ";
             }
             cout << endl;
-        }
-
-        void Learn(vector<Instance> instances){
-            vector<Instance*> set;
-            for (int i = 0; i< instances.size(); i++){
-                set.push_back(&instances[i]);
-            }
-            int bestAttr = Find_Best_Attribute(set);
-            cout << "best: " << bestAttr << endl;
-            treeHead = Make_Tree(set, AO.attributes[bestAttr].name);
-        }
-
-        void Print_Tree(){
-            Tree_Print_Recursive(treeHead, "");
         }
 };
 
@@ -301,7 +369,7 @@ void Read_Attributes_File(string fileName, AttributeOptions& AO, TargetOptions& 
     bool isTargetLine = false;
     bool firstWord = true;
 
-    file.open(fileName);
+    file.open(fileName.c_str());
     if (!file.is_open()){
         cout << "File ("<< fileName <<") Not Found" << endl;
         exit(-1);
@@ -355,11 +423,12 @@ vector<instance> Read_Instance_File(string fileName, AttributeOptions AO, Target
     int count = 0;
     vector<Instance> instances;
 
-    file.open(fileName);
+    file.open(fileName.c_str());
     if (!file.is_open()){
         cout << "File ("<< fileName <<") Not Found" << endl;
         exit(-1);
     }
+    
     while (getline(file, line)){
         stringstream ss(line);
         Instance inst;
@@ -384,6 +453,9 @@ vector<instance> Read_Instance_File(string fileName, AttributeOptions AO, Target
     return instances;
 }
 
+//This is for testing purposes
+void Print_Instances(vector<Instance> instances);
+
 int main(int argc, char *argv[]) {
     std::cout << "Number of arguments: " << argc << std::endl;
     for (int i = 0; i < argc; ++i) {
@@ -399,18 +471,22 @@ int main(int argc, char *argv[]) {
     Read_Attributes_File(attrFile, AO, TO);
 
     vector<instance> trainInstances = Read_Instance_File(trainFile, AO, TO);
-    cout << "------------Instances Train------------" << endl;
-    for (int i = 0; i < trainInstances.size(); i++){
-        for (int j = 0; j < trainInstances[i].attributes.size(); j++){
-            cout << "| "<<trainInstances[i].attributes[j].name << ": " << trainInstances[i].attributes[j].value << " ";
-        }
-        cout << "| Target: " << trainInstances[i].finalResult << endl;
-    }
 
     Tree tree(&AO, &TO);
-    cout << "------------Instances Test------------" << endl;
     tree.Learn(trainInstances);
     tree.Print_Tree();
 
     return 0;
+}
+
+//This is for testing purposes
+void Print_Instances(vector<Instance> instances){
+    for (int i = 0; i < instances.size(); i++){
+        for (int i = 0; i < trainInstances.size(); i++){
+            for (int j = 0; j < trainInstances[i].attributes.size(); j++){
+                cout << "| "<<trainInstances[i].attributes[j].name << ": " << trainInstances[i].attributes[j].value << " ";
+            }
+            cout << "| Target: " << trainInstances[i].finalResult << endl;
+        }
+    }
 }
