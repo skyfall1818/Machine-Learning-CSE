@@ -112,15 +112,10 @@ class Tree{
         double Information_Gain(vector<Instance*> instances, AttributeList attrList, int attrIndex){
             double result = 0.0;
             int numInstances = instances.size();
-            //cout << "value size: "<< attrList.values.size() << endl;
             for (int v = 0; v < attrList.values.size(); v++){
                 int count = 0;
-                // Create subset
                 vector <Instance*> subset;
-                //cout << "IG - Num: "<< numInstances << endl;
-                // Count instances where the attribute and attribute value match
                 for (int j = 0; j < numInstances; j++){
-                    //cout << "j: " << j << endl;
                     if (instances[j]->attributes[attrIndex].value.compare(attrList.values[v]) == 0){
                         subset.push_back(instances[j]);
                         count++;
@@ -129,27 +124,96 @@ class Tree{
 
                 // Calculate information gain
                 double probability = (double)count / numInstances;
-                //cout << "Test" << endl;
                 result += probability * Entropy(subset);
-                //cout << "IGend" << endl;
             }
-            //cout << "returning" << endl;
             return result;
+        }
+        double Gain_Ratio(vector<Instance*> instances, AttributeList attrList, int attrIndex){
+            double informationGain = Information_Gain(instances, attrList, attrIndex);
+            double entropy = Entropy(instances);
+            return informationGain / entropy;
+        }
+        vector<Instance*> Merge_Sort_Instances(vector<Instance*> instances){
+            if (instances.size() > 1){
+                vector<Instance*> sorted;
+                vector<Instance*> left;
+                vector<Instance*> right;
+                int mid = instances.size() / 2;
+                for (int i = 0; i < mid; i++){
+                    left.push_back(instances[i]);
+                }
+                for (int i = mid; i < instances.size(); i++){
+                    right.push_back(instances[i]);
+                }
+                left = Merge_Sort_Instances(left);
+                right = Merge_Sort_Instances(right);
+                int leftIndex = 0;
+                int rightIndex = 0;
+                for (int i = 0; i < instances.size(); i++){
+                    if (leftIndex == left.size()){
+                        sorted.push_back(right[rightIndex]);
+                        rightIndex++;
+                        continue;
+                    }
+                    if (rightIndex == right.size()){
+                        sorted.push_back(left[leftIndex]);
+                        leftIndex++;
+                        continue;
+                    }
+                    int left = atoi(left[leftIndex]->finalResult);
+                    int right = atoi(right[rightIndex]->finalResult);
+                    if (left < right){
+                        sorted.push_back(left[leftIndex]);
+                        leftIndex++;
+                    }
+                    else{
+                        sorted.push_back(right[rightIndex]);
+                        rightIndex++;
+                    }
+                }
+                return sorted;
+            }
+            else{
+                return instances;
+            }
         }
 
         int Find_Best_Attribute(vector<Instance*> instances){
             int bestAttr;
             double bestInfoGain = 0.0;
             bool first = true;
+            vector<Instance*> sortedInstances = Merge_Sort_Instances(instances);
             int AOLength = AO.attributes.size();
-            for (int i = 0; i < AOLength; i++){
-                if (AO.attributes[i].used) continue; //skipping any already used attributes
-                //cout << "testFA" << endl;
-                double informationGain = Information_Gain(instances, AO.attributes[i], i);
-                //cout << "FA2" << endl;
-                if (first || informationGain < bestInfoGain) { // using minimun based on the rewritten information gain of -sum(p log2(p))
+            double information;
+
+            for (int a = 0; a < AOLength; a++){
+                if (AO.attributes[a].used) continue; //skipping any already used attributes
+
+                if (AO.attributes[a].continuous){
+                    attribute attrCandidates;
+                    attrCandidates.name = AO.attributes[a].name;
+                    string currentTarget = "";
+                    for (int i = 0; i < sortedInstances.size(); i++){
+                        if (currentTarget.compare("") == 0){
+                            currentTarget = sortedInstances[i]->finalResult;
+                        }
+                        else if (currentTarget.compare(sortedInstances[i]->finalResult) != 0){
+                            double middle = stod(sortedInstances[i]->attributes[a].value) + stod(sortedInstances[i-1]->attributes[a].value);
+                            middle = middle / 2;
+                            attrCandidates.values.push_back(to_string(middle));
+                            currentTarget = sortedInstances[i]->finalResult;
+                        }
+                    }
+                    information = Information_Gain(instances, attrCandidates, -1);
+                }
+                else{
+                    information = Information_Gain(instances, AO.attributes[i], i);
+                }
+
+                if (first || information < bestInfoGain) { // using minimun based on the rewritten information gain of -sum(p log2(p))
                     first = false;
-                    bestInfoGain = informationGain;
+                    bestInfoGain = information;
+                    
                     bestAttr = i;
                 }
             }
