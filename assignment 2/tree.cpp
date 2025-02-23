@@ -52,6 +52,11 @@ typedef struct attributeOptions{
     vector<AttributeList> attributes;
 }AttributeOptions;
 
+typedef struct continuousUsed{
+    int index;
+    double value;
+}ContinuousBool;
+
 Attribute Copy_Attribute(Attribute attributes){
     Attribute new_attribute;
     new_attribute.name = attributes.name;
@@ -119,7 +124,7 @@ class Tree{
                 int cntHigher = 0;
                 for (int j = 0; j < numInstances; j++){
                     double instVal = stod(instances[j]->attributes[attrIndex].value);
-                    if ( instVal >= conVal){
+                    if ( instVal > conVal){
                         subsetHigher.push_back(instances[j]);
                         cntHigher++;
                     }
@@ -203,7 +208,9 @@ class Tree{
             }
         }
 
-        int Find_Best_Attribute(vector<Instance*> instances, double* continuousVal = NULL){
+        int Find_Best_Attribute(vector<Instance*> instances, double* continuousVal, vector<ContinuousBool> contUsed){
+            cout << "finding best attribute" << endl;
+            cout << "cont Size: " << contUsed.size() << endl;
             int bestAttr;
             double bestInfoGain = 0.0;
             bool first = true;
@@ -224,6 +231,17 @@ class Tree{
                         else if (currentTarget.compare(sortedInstances[i]->finalResult) != 0){
                             double middle = stod(sortedInstances[i]->attributes[a].value) + stod(sortedInstances[i-1]->attributes[a].value);
                             middle = middle / 2;
+                            bool used = false;
+                            for (int c = 0; c < contUsed.size(); c++){
+                                if (contUsed[c].index == a){
+                                    cout << "comparing: " << contUsed[c].value << " to " << middle << endl;
+                                    if( fabs(contUsed[c].value - middle) < 0.01){
+                                        used = true;
+                                        break;
+                                    }
+                                }
+                            }
+                            if (used) continue;
                             attrCandidates.push_back(middle);
                             currentTarget = sortedInstances[i]->finalResult;
                         }
@@ -235,7 +253,7 @@ class Tree{
                             *continuousVal = attrCandidates[i];
                             information = igVal;
                         }
-                        else if (igVal > information) {
+                        else if (igVal < information) {
                             *continuousVal = attrCandidates[i];
                             information = igVal;
                         }
@@ -249,7 +267,7 @@ class Tree{
                     first = false;
                     bestInfoGain = information;
                     bestAttr = a;
-                    if (AO.attributes[a].continuous){
+                    if (continuousVal != NULL && !AO.attributes[a].continuous){
                         *continuousVal = 0.0;
                     }
                 }
@@ -339,13 +357,19 @@ class Tree{
             return true;
         }
 
-        Node* Make_Tree(vector<Instance*> instances, string parentAttribute, string instanceValue, string parentMajorityTarget){
+        Node* Make_Tree(vector<Instance*> instances, string parentAttribute, string instanceValue, string parentMajorityTarget, vector<ContinuousBool> contUsed){
             cout << "attribute: " << parentAttribute << endl;
             Node* tempNode;
             Node* nxtNode;
+            double contuinuousVal;
 
             // initializing current node
             Node* newNode = (Node*)malloc(sizeof(Node));
+                        
+            if (newNode == NULL) {
+                std::cerr << "Memory allocation failed" << std::endl;
+                exit(1);
+            }
 
             newNode->parentAttribute = (char*)malloc(parentAttribute.length()*sizeof(char));
             strcpy(newNode->parentAttribute, parentAttribute.c_str());
@@ -353,47 +377,63 @@ class Tree{
             newNode->value = (char*)malloc(instanceValue.length()*sizeof(char));
             strcpy(newNode->value, instanceValue.c_str());
 
-            int attributeIndex = Find_Best_Attribute(instances);
+            int attributeIndex = Find_Best_Attribute(instances, &contuinuousVal, contUsed);
             newNode->nxtAttribute = (char*)malloc(AO.attributes[attributeIndex].name.length()*sizeof(char));
             strcpy(newNode->nxtAttribute, AO.attributes[attributeIndex].name.c_str());
             
             newNode->childHead = NULL;
             newNode->nextBranch = NULL;
-            
-            if (newNode == NULL) {
-                std::cerr << "Memory allocation failed" << std::endl;
-                exit(1);
-            }
 
-            if (instances.size() == 0){
+            if (instances.size() == 0){ // ran out of examples
                 newNode->childHead = Create_leaf_Node(instances, parentMajorityTarget);
                 return newNode;
             }
 
-            if (Check_Empty_Attribute(instances, newNode, parentMajorityTarget) || Check_Same_Target(instances, newNode)){
+            if (Check_Empty_Attribute(instances, newNode, parentMajorityTarget) || Check_Same_Target(instances, newNode)){ // ranout of attributes or all instances have the same target
                 return newNode;
             }
 
             string currentMajority = Get_Majority(instances);
 
-            for (int j = 0; j < AO.attributes[attributeIndex].values.size(); j++){
-                //cout << "j:" << j << endl;
-                vector<Instance*> subset;
-                for (int k = 0; k < instances.size(); k++){
-                    if (instances[k]->attributes[attributeIndex].value.compare(AO.attributes[attributeIndex].values[j]) == 0){
-                        subset.push_back(instances[k]);
+            if (AO.attributes[attributeIndex].continuous){
+                vector<Instance*> lowersubSet;
+                vector<Instance*> highersubSet;
+                for (int i = 0; i < instances.size(); i++){
+                    if (stod(instances[i]->attributes[attributeIndex].value) > contuinuousVal){
+                        highersubSet.push_back(instances[i]);
+                    }
+                    else{
+                        lowersubSet.push_back(instances[i]);
                     }
                 }
-                AO.attributes[attributeIndex].used = true;
-                nxtNode = Make_Tree(subset, AO.attributes[attributeIndex].name,AO.attributes[attributeIndex].values[j], currentMajority);
-                AO.attributes[attributeIndex].used = false;
-                if (newNode->childHead == NULL){
-                    newNode->childHead = nxtNode;
-                    tempNode = nxtNode;
-                }
-                else{
-                    tempNode->nextBranch = nxtNode;
-                    tempNode = nxtNode;
+                ContinuousBool newContinuousBool;
+                newContinuousBool.value = contuinuousVal;
+                newContinuousBool.index = attributeIndex;
+                contUsed.push_back(newContinuousBool);
+                nxtNode = Make_Tree(highersubSet, AO.attributes[attributeIndex].name + ">" + to_string(contuinuousVal), "T", currentMajority, contUsed);
+                nxtNode ->nextBranch = Make_Tree(lowersubSet, AO.attributes[attributeIndex].name + ">" + to_string(contuinuousVal), "F", currentMajority, contUsed);
+                newNode->childHead = nxtNode;
+            }
+            else{
+                for (int j = 0; j < AO.attributes[attributeIndex].values.size(); j++){
+                    //cout << "j:" << j << endl;
+                    vector<Instance*> subset;
+                    for (int k = 0; k < instances.size(); k++){
+                        if (instances[k]->attributes[attributeIndex].value.compare(AO.attributes[attributeIndex].values[j]) == 0){
+                            subset.push_back(instances[k]);
+                        }
+                    }
+                    AO.attributes[attributeIndex].used = true;
+                    nxtNode = Make_Tree(subset, AO.attributes[attributeIndex].name,AO.attributes[attributeIndex].values[j], currentMajority, contUsed);
+                    AO.attributes[attributeIndex].used = false;
+                    if (newNode->childHead == NULL){
+                        newNode->childHead = nxtNode;
+                        tempNode = nxtNode;
+                    }
+                    else{
+                        tempNode->nextBranch = nxtNode;
+                        tempNode = nxtNode;
+                    }
                 }
             }
             return newNode;
@@ -422,17 +462,18 @@ class Tree{
             AO = *attrOptions;
             TO = *targetOptions;
             treeHead = NULL;
-            Print_Attributes();
             Print_Targets();
+            Print_Attributes();
         }
 
         void Learn(vector<Instance> instances){
             vector<Instance*> set;
+            vector<ContinuousBool> contUsed;
             for (int i = 0; i< instances.size(); i++){
                 set.push_back(&instances[i]);
             }
             string majority = Get_Majority(set);
-            treeHead = Make_Tree(set, "" , "", Get_Majority(set));
+            treeHead = Make_Tree(set, "" , "", Get_Majority(set), contUsed);
         }
 
         void Print_Tree(){
@@ -448,8 +489,14 @@ class Tree{
             cout << "Attributes: "<<  AO.attributes.size() << endl;
             for (int i = 0; i < AO.attributes.size(); i++){
                 cout << AO.attributes[i].name << ": ";
-                for (int j = 0; j < AO.attributes[i].values.size(); j++){
-                    cout << AO.attributes[i].values[j] << " ";
+                if (AO.attributes[i].continuous){
+                    cout << "continuous ";
+                }
+                else{
+                    for (int j = 0; j < AO.attributes[i].values.size(); j++){
+                        
+                        cout << AO.attributes[i].values[j] << " ";
+                    }
                 }
                 cout << endl;
             }
@@ -572,14 +619,10 @@ int main(int argc, char *argv[]) {
     char* attrFile = argv[1];
     char* trainFile = argv[2];
     //string testFile = argv[3];
-    cout << "reading attributes" << endl;
     Read_Attributes_File(attrFile, AO, TO);
-    //cout << "finish reading attributes" << endl;
 
-    //cout << "reading train file" << endl;
     vector<instance> trainInstances = Read_Instance_File(trainFile, AO, TO);
     Print_Instances(trainInstances);
-    //cout << "finish reading file" << endl;
     
     Tree tree(&AO, &TO);
     tree.Learn(trainInstances);
