@@ -25,7 +25,7 @@ typedef struct node{
 typedef struct attribute{
     string name;
     string value;
-    bool continous;
+    bool continuous;
 } Attribute;
 
 // instance typedef
@@ -44,7 +44,7 @@ typedef struct targetList{
 typedef struct attributeList{
     string name;
     vector<string> values;
-    bool continous;
+    bool continuous;
     bool used;
 }AttributeList;
 
@@ -109,31 +109,56 @@ class Tree{
 
         // Returns sum( S_v/s * Entropy(S_v) )
         // Note: this is not the same equation as in the textbook
-        double Information_Gain(vector<Instance*> instances, AttributeList attrList, int attrIndex){
+        double Information_Gain(vector<Instance*> instances, AttributeList attrList, int attrIndex, double conVal = 0){
             double result = 0.0;
             int numInstances = instances.size();
-            for (int v = 0; v < attrList.values.size(); v++){
-                int count = 0;
-                vector <Instance*> subset;
+            if (attrList.continuous){
+                vector<Instance*> subsetLower;
+                vector<Instance*> subsetHigher;
+                int cntLower = 0;
+                int cntHigher = 0;
                 for (int j = 0; j < numInstances; j++){
-                    if (instances[j]->attributes[attrIndex].value.compare(attrList.values[v]) == 0){
-                        subset.push_back(instances[j]);
-                        count++;
+                    double instVal = stod(instances[j]->attributes[attrIndex].value);
+                    if ( instVal >= conVal){
+                        subsetHigher.push_back(instances[j]);
+                        cntHigher++;
+                    }
+                    else{
+                        subsetLower.push_back(instances[j]);
+                        cntLower++;
                     }
                 }
+                double prob = (double) cntLower / numInstances;
+                result += prob * Entropy(subsetLower);
+                prob = (double) cntHigher / numInstances;
+                result += prob * Entropy(subsetHigher);
+            }
+            else{
+                for (int v = 0; v < attrList.values.size(); v++){
+                    int count = 0;
+                    vector <Instance*> subset;
+                    for (int j = 0; j < numInstances; j++){
+                        if (instances[j]->attributes[attrIndex].value.compare(attrList.values[v]) == 0){
+                            subset.push_back(instances[j]);
+                            count++;
+                        }
+                    }
 
-                // Calculate information gain
-                double probability = (double)count / numInstances;
-                result += probability * Entropy(subset);
+                    // Calculate information gain
+                    double probability = (double)count / numInstances;
+                    result += probability * Entropy(subset);
+                }
             }
             return result;
         }
+
         double Gain_Ratio(vector<Instance*> instances, AttributeList attrList, int attrIndex){
             double informationGain = Information_Gain(instances, attrList, attrIndex);
             double entropy = Entropy(instances);
             return informationGain / entropy;
         }
-        vector<Instance*> Merge_Sort_Instances(vector<Instance*> instances){
+
+        vector<Instance*> Merge_Sort_Instances(vector<Instance*> instances, int attrIndex){
             if (instances.size() > 1){
                 vector<Instance*> sorted;
                 vector<Instance*> left;
@@ -145,8 +170,8 @@ class Tree{
                 for (int i = mid; i < instances.size(); i++){
                     right.push_back(instances[i]);
                 }
-                left = Merge_Sort_Instances(left);
-                right = Merge_Sort_Instances(right);
+                left = Merge_Sort_Instances(left, attrIndex);
+                right = Merge_Sort_Instances(right, attrIndex);
                 int leftIndex = 0;
                 int rightIndex = 0;
                 for (int i = 0; i < instances.size(); i++){
@@ -160,9 +185,9 @@ class Tree{
                         leftIndex++;
                         continue;
                     }
-                    int left = atoi(left[leftIndex]->finalResult);
-                    int right = atoi(right[rightIndex]->finalResult);
-                    if (left < right){
+                    double leftVal = stod(left[leftIndex]->attributes[attrIndex].value);
+                    double rightVal = stod(right[rightIndex]->attributes[attrIndex].value);
+                    if (leftVal < rightVal){
                         sorted.push_back(left[leftIndex]);
                         leftIndex++;
                     }
@@ -178,11 +203,10 @@ class Tree{
             }
         }
 
-        int Find_Best_Attribute(vector<Instance*> instances){
+        int Find_Best_Attribute(vector<Instance*> instances, double* continuousVal = NULL){
             int bestAttr;
             double bestInfoGain = 0.0;
             bool first = true;
-            vector<Instance*> sortedInstances = Merge_Sort_Instances(instances);
             int AOLength = AO.attributes.size();
             double information;
 
@@ -190,8 +214,8 @@ class Tree{
                 if (AO.attributes[a].used) continue; //skipping any already used attributes
 
                 if (AO.attributes[a].continuous){
-                    attribute attrCandidates;
-                    attrCandidates.name = AO.attributes[a].name;
+                    vector<Instance*> sortedInstances = Merge_Sort_Instances(instances, a);
+                    vector<double> attrCandidates;
                     string currentTarget = "";
                     for (int i = 0; i < sortedInstances.size(); i++){
                         if (currentTarget.compare("") == 0){
@@ -200,21 +224,34 @@ class Tree{
                         else if (currentTarget.compare(sortedInstances[i]->finalResult) != 0){
                             double middle = stod(sortedInstances[i]->attributes[a].value) + stod(sortedInstances[i-1]->attributes[a].value);
                             middle = middle / 2;
-                            attrCandidates.values.push_back(to_string(middle));
+                            attrCandidates.push_back(middle);
                             currentTarget = sortedInstances[i]->finalResult;
                         }
                     }
-                    information = Information_Gain(instances, attrCandidates, -1);
+                    bool first = true;
+                    for (int i =0; i< attrCandidates.size(); i++){
+                        double igVal = Information_Gain(instances, AO.attributes[a], a, attrCandidates[i]);
+                        if (first){
+                            *continuousVal = attrCandidates[i];
+                            information = igVal;
+                        }
+                        else if (igVal > information) {
+                            *continuousVal = attrCandidates[i];
+                            information = igVal;
+                        }
+                    }
                 }
                 else{
-                    information = Information_Gain(instances, AO.attributes[i], i);
+                    information = Information_Gain(instances, AO.attributes[a], a);
                 }
 
                 if (first || information < bestInfoGain) { // using minimun based on the rewritten information gain of -sum(p log2(p))
                     first = false;
                     bestInfoGain = information;
-                    
-                    bestAttr = i;
+                    bestAttr = a;
+                    if (AO.attributes[a].continuous){
+                        *continuousVal = 0.0;
+                    }
                 }
             }
             return bestAttr;
@@ -303,6 +340,7 @@ class Tree{
         }
 
         Node* Make_Tree(vector<Instance*> instances, string parentAttribute, string instanceValue, string parentMajorityTarget){
+            cout << "attribute: " << parentAttribute << endl;
             Node* tempNode;
             Node* nxtNode;
 
@@ -384,6 +422,8 @@ class Tree{
             AO = *attrOptions;
             TO = *targetOptions;
             treeHead = NULL;
+            Print_Attributes();
+            Print_Targets();
         }
 
         void Learn(vector<Instance> instances){
@@ -391,6 +431,7 @@ class Tree{
             for (int i = 0; i< instances.size(); i++){
                 set.push_back(&instances[i]);
             }
+            string majority = Get_Majority(set);
             treeHead = Make_Tree(set, "" , "", Get_Majority(set));
         }
 
@@ -426,26 +467,26 @@ class Tree{
 };
 
 
-void Read_Attributes_File(string fileName, AttributeOptions& AO, TargetOptions& TO){
+void Read_Attributes_File(char* fileName, AttributeOptions& AO, TargetOptions& TO){
     ifstream file;
     string line;
     string word;
     bool isTargetLine = false;
     bool firstWord = true;
 
-    file.open(fileName.c_str());
+    file.open(fileName);
     if (!file.is_open()){
         cout << "File ("<< fileName <<") Not Found" << endl;
         exit(-1);
     }
     while (getline(file, line)){
-        stringstream ss(line);
-        firstWord = true;
         AttributeList attrList;
-        attrList.continous = false;
+        attrList.continuous = false;
         attrList.used = false;
 
-        while (getline(ss, word, ' ')){
+        stringstream ss(line);
+        firstWord = true;
+        while (ss >> word){
             if (isTargetLine){
                 if (firstWord){
                     firstWord = false;
@@ -461,14 +502,13 @@ void Read_Attributes_File(string fileName, AttributeOptions& AO, TargetOptions& 
             }
             else{
                 if (word.compare("continuous") == 0){
-                    attrList.continous = true;
+                    attrList.continuous = true;
                 }
                 else{
                     attrList.values.push_back(word);
                 }
             }
         }
-
         if (!isTargetLine && !firstWord){
             AO.attributes.push_back(attrList);
         }
@@ -480,14 +520,14 @@ void Read_Attributes_File(string fileName, AttributeOptions& AO, TargetOptions& 
     file.close();
 }
 
-vector<instance> Read_Instance_File(string fileName, AttributeOptions AO, TargetOptions TO){
+vector<instance> Read_Instance_File(char* fileName, AttributeOptions AO, TargetOptions TO){
     ifstream file;
     string line;
     string word;
     int count = 0;
     vector<Instance> instances;
 
-    file.open(fileName.c_str());
+    file.open(fileName);
     if (!file.is_open()){
         cout << "File ("<< fileName <<") Not Found" << endl;
         exit(-1);
@@ -495,9 +535,10 @@ vector<instance> Read_Instance_File(string fileName, AttributeOptions AO, Target
     
     while (getline(file, line)){
         stringstream ss(line);
+        string word;
         Instance inst;
         count = 0;
-        while (getline(ss, word, ' ')){
+        while (ss >> word){
             Attribute attr;
 
             if (count == AO.attributes.size()){
@@ -526,16 +567,20 @@ int main(int argc, char *argv[]) {
     std::cout << "Argument " << i << ": " << argv[i] << std::endl;
     }
 
-    string attrFile(argv[1]);
-
     AttributeOptions AO;
     TargetOptions TO;
-    string trainFile = argv[2];
+    char* attrFile = argv[1];
+    char* trainFile = argv[2];
     //string testFile = argv[3];
+    cout << "reading attributes" << endl;
     Read_Attributes_File(attrFile, AO, TO);
+    //cout << "finish reading attributes" << endl;
 
+    //cout << "reading train file" << endl;
     vector<instance> trainInstances = Read_Instance_File(trainFile, AO, TO);
-
+    Print_Instances(trainInstances);
+    //cout << "finish reading file" << endl;
+    
     Tree tree(&AO, &TO);
     tree.Learn(trainInstances);
     tree.Print_Tree();
@@ -546,11 +591,9 @@ int main(int argc, char *argv[]) {
 //This is for testing purposes
 void Print_Instances(vector<Instance> instances){
     for (int i = 0; i < instances.size(); i++){
-        for (int i = 0; i < trainInstances.size(); i++){
-            for (int j = 0; j < trainInstances[i].attributes.size(); j++){
-                cout << "| "<<trainInstances[i].attributes[j].name << ": " << trainInstances[i].attributes[j].value << " ";
-            }
-            cout << "| Target: " << trainInstances[i].finalResult << endl;
+        for (int j = 0; j < instances[i].attributes.size(); j++){
+            cout << "| "<<instances[i].attributes[j].name << ": " << instances[i].attributes[j].value << " ";
         }
+        cout << "| Target: " << instances[i].finalResult << endl;
     }
 }
