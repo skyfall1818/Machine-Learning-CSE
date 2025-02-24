@@ -224,7 +224,9 @@ class Tree{
                     vector<Instance*> sortedInstances = Merge_Sort_Instances(instances, a);
                     vector<double> attrCandidates;
                     string currentTarget = "";
+                    double bestContVal;
                     for (int i = 0; i < sortedInstances.size(); i++){
+                        cout << "instance: " << sortedInstances[i]->finalResult << " current: " << currentTarget << endl;
                         if (currentTarget.compare("") == 0){
                             currentTarget = sortedInstances[i]->finalResult;
                         }
@@ -232,28 +234,30 @@ class Tree{
                             double middle = stod(sortedInstances[i]->attributes[a].value) + stod(sortedInstances[i-1]->attributes[a].value);
                             middle = middle / 2;
                             bool used = false;
+                            cout << "mid: " << middle << endl;
                             for (int c = 0; c < contUsed.size(); c++){
+                                cout << "at: " << a << " c: " << c << " ind: " << contUsed[c].index << " val: " << contUsed[c].value << endl;
                                 if (contUsed[c].index == a){
-                                    cout << "comparing: " << contUsed[c].value << " to " << middle << endl;
                                     if( fabs(contUsed[c].value - middle) < 0.01){
                                         used = true;
+                                        cout << "already used skipping" << endl;
                                         break;
                                     }
                                 }
                             }
                             if (used) continue;
-                            attrCandidates.push_back(middle);
+                            if (attrCandidates.size() == 0 || attrCandidates[attrCandidates.size() - 1] != middle){
+                                attrCandidates.push_back(middle);
+                            }
                             currentTarget = sortedInstances[i]->finalResult;
                         }
                     }
-                    bool first = true;
+                    bool f = true;
                     for (int i =0; i< attrCandidates.size(); i++){
+                        cout << "checking at "<< a <<": " << attrCandidates[i] << endl;
                         double igVal = Information_Gain(instances, AO.attributes[a], a, attrCandidates[i]);
-                        if (first){
-                            *continuousVal = attrCandidates[i];
-                            information = igVal;
-                        }
-                        else if (igVal < information) {
+                        if (f || igVal < information){
+                            f = false;
                             *continuousVal = attrCandidates[i];
                             information = igVal;
                         }
@@ -267,11 +271,9 @@ class Tree{
                     first = false;
                     bestInfoGain = information;
                     bestAttr = a;
-                    if (continuousVal != NULL && !AO.attributes[a].continuous){
-                        *continuousVal = 0.0;
-                    }
                 }
             }
+            cout << "returning: " << bestAttr << endl;
             return bestAttr;
         }
         
@@ -361,7 +363,7 @@ class Tree{
             cout << "attribute: " << parentAttribute << endl;
             Node* tempNode;
             Node* nxtNode;
-            double contuinuousVal;
+            double continuousVal;
 
             // initializing current node
             Node* newNode = (Node*)malloc(sizeof(Node));
@@ -377,7 +379,7 @@ class Tree{
             newNode->value = (char*)malloc(instanceValue.length()*sizeof(char));
             strcpy(newNode->value, instanceValue.c_str());
 
-            int attributeIndex = Find_Best_Attribute(instances, &contuinuousVal, contUsed);
+            int attributeIndex = Find_Best_Attribute(instances, &continuousVal, contUsed);
             newNode->nxtAttribute = (char*)malloc(AO.attributes[attributeIndex].name.length()*sizeof(char));
             strcpy(newNode->nxtAttribute, AO.attributes[attributeIndex].name.c_str());
             
@@ -399,7 +401,7 @@ class Tree{
                 vector<Instance*> lowersubSet;
                 vector<Instance*> highersubSet;
                 for (int i = 0; i < instances.size(); i++){
-                    if (stod(instances[i]->attributes[attributeIndex].value) > contuinuousVal){
+                    if (stod(instances[i]->attributes[attributeIndex].value) > continuousVal){
                         highersubSet.push_back(instances[i]);
                     }
                     else{
@@ -407,11 +409,12 @@ class Tree{
                     }
                 }
                 ContinuousBool newContinuousBool;
-                newContinuousBool.value = contuinuousVal;
+                newContinuousBool.value = continuousVal;
                 newContinuousBool.index = attributeIndex;
+                cout << "adding- "<< attributeIndex << ": " << continuousVal << endl;
                 contUsed.push_back(newContinuousBool);
-                nxtNode = Make_Tree(highersubSet, AO.attributes[attributeIndex].name + ">" + to_string(contuinuousVal), "T", currentMajority, contUsed);
-                nxtNode ->nextBranch = Make_Tree(lowersubSet, AO.attributes[attributeIndex].name + ">" + to_string(contuinuousVal), "F", currentMajority, contUsed);
+                nxtNode = Make_Tree(highersubSet, AO.attributes[attributeIndex].name + ">" + to_string(continuousVal), "T", currentMajority, contUsed);
+                nxtNode ->nextBranch = Make_Tree(lowersubSet, AO.attributes[attributeIndex].name + ">" + to_string(continuousVal), "F", currentMajority, contUsed);
                 newNode->childHead = nxtNode;
             }
             else{
