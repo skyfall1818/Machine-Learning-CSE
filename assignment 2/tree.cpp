@@ -11,6 +11,9 @@
 
 using namespace std;
 
+double PERCENTAGE_VALIDATION = 0.2;
+
+
 //linked list tree
 // for leaf nodes: value is the target result and nxtAttribute is the count output
 typedef struct node{
@@ -78,6 +81,16 @@ class Tree{
         AttributeOptions AO;
         TargetOptions TO;
         Node* treeHead;
+
+        //converts double to string
+        // reomves trailing zero
+        string D_to_S (double value){
+            string str = to_string(value);
+            while (str.length() > 1 && str.find('.') != string::npos && str[str.length()-1] == '0'){
+                str = str.substr(0, str.length()-1);
+            }
+            return str;
+        }
 
         // Gets the entropy of a given set
         double Entropy(vector<Instance*> set)
@@ -209,13 +222,12 @@ class Tree{
         }
 
         int Find_Best_Attribute(vector<Instance*> instances, double* continuousVal, vector<ContinuousBool> contUsed){
-            cout << "finding best attribute" << endl;
-            cout << "cont Size: " << contUsed.size() << endl;
             int bestAttr;
             double bestInfoGain = 0.0;
             bool first = true;
             int AOLength = AO.attributes.size();
             double information;
+            double bestContVal;
 
             for (int a = 0; a < AOLength; a++){
                 if (AO.attributes[a].used) continue; //skipping any already used attributes
@@ -224,9 +236,7 @@ class Tree{
                     vector<Instance*> sortedInstances = Merge_Sort_Instances(instances, a);
                     vector<double> attrCandidates;
                     string currentTarget = "";
-                    double bestContVal;
                     for (int i = 0; i < sortedInstances.size(); i++){
-                        cout << "instance: " << sortedInstances[i]->finalResult << " current: " << currentTarget << endl;
                         if (currentTarget.compare("") == 0){
                             currentTarget = sortedInstances[i]->finalResult;
                         }
@@ -234,13 +244,10 @@ class Tree{
                             double middle = stod(sortedInstances[i]->attributes[a].value) + stod(sortedInstances[i-1]->attributes[a].value);
                             middle = middle / 2;
                             bool used = false;
-                            cout << "mid: " << middle << endl;
                             for (int c = 0; c < contUsed.size(); c++){
-                                cout << "at: " << a << " c: " << c << " ind: " << contUsed[c].index << " val: " << contUsed[c].value << endl;
                                 if (contUsed[c].index == a){
                                     if( fabs(contUsed[c].value - middle) < 0.01){
                                         used = true;
-                                        cout << "already used skipping" << endl;
                                         break;
                                     }
                                 }
@@ -254,11 +261,10 @@ class Tree{
                     }
                     bool f = true;
                     for (int i =0; i< attrCandidates.size(); i++){
-                        cout << "checking at "<< a <<": " << attrCandidates[i] << endl;
                         double igVal = Information_Gain(instances, AO.attributes[a], a, attrCandidates[i]);
                         if (f || igVal < information){
                             f = false;
-                            *continuousVal = attrCandidates[i];
+                            bestContVal = attrCandidates[i];
                             information = igVal;
                         }
                     }
@@ -270,10 +276,10 @@ class Tree{
                 if (first || information < bestInfoGain) { // using minimun based on the rewritten information gain of -sum(p log2(p))
                     first = false;
                     bestInfoGain = information;
+                    *continuousVal = bestContVal;
                     bestAttr = a;
                 }
             }
-            cout << "returning: " << bestAttr << endl;
             return bestAttr;
         }
         
@@ -360,7 +366,6 @@ class Tree{
         }
 
         Node* Make_Tree(vector<Instance*> instances, string parentAttribute, string instanceValue, string parentMajorityTarget, vector<ContinuousBool> contUsed){
-            cout << "attribute: " << parentAttribute << endl;
             Node* tempNode;
             Node* nxtNode;
             double continuousVal;
@@ -411,15 +416,13 @@ class Tree{
                 ContinuousBool newContinuousBool;
                 newContinuousBool.value = continuousVal;
                 newContinuousBool.index = attributeIndex;
-                cout << "adding- "<< attributeIndex << ": " << continuousVal << endl;
                 contUsed.push_back(newContinuousBool);
-                nxtNode = Make_Tree(highersubSet, AO.attributes[attributeIndex].name + ">" + to_string(continuousVal), "T", currentMajority, contUsed);
-                nxtNode ->nextBranch = Make_Tree(lowersubSet, AO.attributes[attributeIndex].name + ">" + to_string(continuousVal), "F", currentMajority, contUsed);
+                nxtNode = Make_Tree(highersubSet, AO.attributes[attributeIndex].name + ">" + D_to_S(continuousVal), "T", currentMajority, contUsed);
+                nxtNode ->nextBranch = Make_Tree(lowersubSet, AO.attributes[attributeIndex].name + ">" + D_to_S(continuousVal), "F", currentMajority, contUsed);
                 newNode->childHead = nxtNode;
             }
             else{
                 for (int j = 0; j < AO.attributes[attributeIndex].values.size(); j++){
-                    //cout << "j:" << j << endl;
                     vector<Instance*> subset;
                     for (int k = 0; k < instances.size(); k++){
                         if (instances[k]->attributes[attributeIndex].value.compare(AO.attributes[attributeIndex].values[j]) == 0){
@@ -465,8 +468,6 @@ class Tree{
             AO = *attrOptions;
             TO = *targetOptions;
             treeHead = NULL;
-            Print_Targets();
-            Print_Attributes();
         }
 
         void Learn(vector<Instance> instances){
@@ -514,7 +515,95 @@ class Tree{
             }
             cout << endl;
         }
-};
+
+        string Get_Prediction(Instance Instances){
+            node* currentNode = treeHead;
+            while (currentNode!= NULL){
+                int attributeIndex;
+                for (int i = 0; i < AO.attributes.size(); i++){
+                    if (strcmp(AO.attributes[i].name.c_str(), currentNode->nxtAttribute) == 0){
+                        attributeIndex = i;
+                        break;
+                    }
+                }
+                currentNode = currentNode->childHead;
+                if (currentNode->childHead == NULL){
+                    break;
+                }
+                bool foundChild = false;
+                if (AO.attributes[attributeIndex].continuous){
+                    double instanceVal = stod(Instances.attributes[attributeIndex].value);
+                    string floatStr = currentNode->parentAttribute;
+                    floatStr = floatStr.substr(floatStr.find('>') + 1, floatStr.length());
+                    double greaterThan = stod(floatStr);
+                    // short-hand since we know the current branch is binary
+                    if (instanceVal <= greaterThan){
+                        currentNode = currentNode->nextBranch;
+                    }
+                }
+                else{
+                    while(currentNode != NULL && !foundChild){
+                            if (strcmp(currentNode->value, Instances.attributes[attributeIndex].value.c_str()) == 0){
+                                foundChild = true;
+                                break;
+                            }
+                        }
+                        currentNode = currentNode->nextBranch;
+
+                    if (currentNode == NULL){
+                        cout << "Error Prediction" << endl;
+                        exit(-1);
+                    }
+                }
+            }
+            if (currentNode == NULL){
+                cout << "Error End Prediction" << endl;
+                exit(-1);
+            }
+            return currentNode->value;
+        }
+        double Get_Accuracy(vector<Instance> validationSet){
+            int correct = 0;
+            for (int i = 0; i < validationSet.size(); i++){
+                if (Get_Prediction(validationSet[i]).compare(validationSet[i].finalResult) == 0){
+                    correct++;
+                }
+            }
+            return (double)correct / validationSet.size();
+        }
+
+        void Prune_Tree(vector<Instance> verificationSet){
+            double noPruneAccuracy = Get_Accuracy(verificationSet);
+
+            vector <Node*> nodesToPrune;
+            vector <Node*> nodeQueue;
+            nodeQueue.push_back(treeHead);
+            while(nodeQueue.size() > 0){
+                Node* currentNode = nodeQueue[0];
+                nodeQueue.erase(nodeQueue.begin());
+                while (currentNode != NULL){
+                    if (currentNode->childHead == NULL){
+                        cout << "Error Pruning: node tree traversal" << endl;
+                        exit(-1);
+                    }
+
+                    if (currentNode->childHead->nxtAttribute == NULL){
+                        nodesToPrune.push_back(currentNode);
+                    }
+                    else{
+                        nodeQueue.push_back(currentNode->childHead);
+                    }
+                    currentNode = currentNode->nextBranch;
+                }
+            }
+            for (int i = 0; i < nodesToPrune.size(); i++){
+                Node* tempParent = nodesToPrune[i];
+                Node* tempChild = nodesToPrune[i]->childHead;
+                Node* tempParent = 
+
+            }
+        }
+}; // END Tree
 
 
 void Read_Attributes_File(char* fileName, AttributeOptions& AO, TargetOptions& TO){
@@ -608,28 +697,60 @@ vector<instance> Read_Instance_File(char* fileName, AttributeOptions AO, TargetO
     return instances;
 }
 
+//pass by values for training set and verification set
+void Get_Training_and_Verification_Sets(vector<Instance> instances, vector<Instance>& trainingSet, vector<Instance>& verificationSet){
+    int trainingSetSize = instances.size() * (1.0 - PERCENTAGE_VALIDATION);
+    for (int i = 0; i < trainingSetSize; i++){
+        trainingSet.push_back(instances[i]);
+    }
+    for (int i = trainingSetSize; i < instances.size(); i++){
+        verificationSet.push_back(instances[i]);
+    }
+}
+
+
 //This is for testing purposes
 void Print_Instances(vector<Instance> instances);
 
 int main(int argc, char *argv[]) {
-    std::cout << "Number of arguments: " << argc << std::endl;
+    cout << "Number of arguments: " << argc << std::endl;
     for (int i = 0; i < argc; ++i) {
-    std::cout << "Argument " << i << ": " << argv[i] << std::endl;
+        cout << "Argument " << i << ": " << argv[i] << std::endl;
     }
+    cout << endl;
 
     AttributeOptions AO;
     TargetOptions TO;
+    vector<Instance> trainSet, verificationSet;
+    bool prune = false;
+    bool rule = false;
     char* attrFile = argv[1];
     char* trainFile = argv[2];
-    //string testFile = argv[3];
+    char* testFile = argv[3];
+    for (int i = 4; i < argc; i++){
+        if (strcmp(argv[i], "--prune") == 0){
+            prune = true;
+        }
+        else if (strcmp(argv[i], "--rule") == 0){
+            rule = true;
+        }
+    }
     Read_Attributes_File(attrFile, AO, TO);
 
-    vector<instance> trainInstances = Read_Instance_File(trainFile, AO, TO);
-    Print_Instances(trainInstances);
+    if (prune){
+        vector<instance> trainInstances = Read_Instance_File(trainFile, AO, TO);
+        Get_Training_and_Verification_Sets(trainInstances, trainSet, verificationSet);
+    }
+    else{
+        trainSet = Read_Instance_File(trainFile, AO, TO);
+    }
+
+    vector<instance> testInstances = Read_Instance_File(testFile, AO, TO);
     
     Tree tree(&AO, &TO);
-    tree.Learn(trainInstances);
+    tree.Learn(trainSet);
     tree.Print_Tree();
+    cout << "Accuracy: " << tree.Get_Accuracy(testInstances) << endl;
 
     return 0;
 }
