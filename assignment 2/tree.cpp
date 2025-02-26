@@ -79,17 +79,20 @@ class RulePostPrune{
         double Get_Accuracy(Rule rule, vector<Instance> testSet){
             int correct = 0;
             int count = 0;
-            for (Instance instance : testSet){
+            for (int t = 0; t < testSet.size(); t++){
+                Instance instance = testSet[t];
                 bool same = true;
-                for (attribute attrR : rule.attributes){
+                for (int a = 0; a < rule.attributes.size(); a++){
+                    attribute attrR = rule.attributes[a];
                     if (attrR.continuous){
                         string attrName = attrR.name.substr(0, attrR.name.find('>'));
                         string floatStr = attrR.name;
                         floatStr = floatStr.substr(floatStr.find('>') + 1, floatStr.length());
-                        double attrVal = stod(floatStr);
-                        for (attribute attrI : instance.attributes){
+                        double attrVal = atof(floatStr.c_str());
+                        for (int i = 0; i < instance.attributes.size(); i++){
+                            attribute attrI = instance.attributes[i];
                             if (attrName.compare(attrI.name) == 0){
-                                double instanceVal = stod(attrI.value);
+                                double instanceVal = atof(attrI.value.c_str());
                                 if (instanceVal <= attrVal && attrR.value.compare("T") == 0 || instanceVal > attrVal && attrR.value.compare("F") == 0){
                                     same = false;
                                 }
@@ -98,7 +101,8 @@ class RulePostPrune{
                         }
                     }
                     else {
-                        for (attribute attrI : instance.attributes){
+                        for (int i = 0; i < instance.attributes.size(); i++){
+                            attribute attrI = instance.attributes[i];
                             if (attrR.name.compare(attrI.name) == 0){
                                 if (attrR.value.compare(attrI.value) != 0){
                                     same = false;
@@ -126,17 +130,20 @@ class RulePostPrune{
             for (int i = 0; i < TO.results.size(); i++){
                 targetCounts[i] = 0;
             }
-            for (Instance instance : testSet){
+            for (int t = 0; t < testSet.size(); t++){
+                Instance instance = testSet[t];
                 bool same = true;
-                for (attribute attrR : rule.attributes){
+                for (int a = 0; a < rule.attributes.size(); a++){
+                    attribute attrR = rule.attributes[a];
                     if (attrR.continuous){
                         string attrName = attrR.name.substr(0, attrR.name.find('>'));
                         string floatStr = attrR.name;
                         floatStr = floatStr.substr(floatStr.find('>') + 1, floatStr.length());
-                        double attrVal = stod(floatStr);
-                        for (attribute attrI : instance.attributes){
+                        double attrVal = atof(floatStr.c_str());
+                        for (int i = 0; i < instance.attributes.size(); i++){
+                            attribute attrI = instance.attributes[i];
                             if (attrName.compare(attrI.name) == 0){
-                                double instanceVal = stod(attrI.value);
+                                double instanceVal = atof(attrI.value.c_str());
                                 if (instanceVal <= attrVal && attrR.value.compare("T") == 0 || instanceVal > attrVal && attrR.value.compare("F") == 0){
                                     same = false;
                                 }
@@ -145,7 +152,8 @@ class RulePostPrune{
                         }
                     }
                     else {
-                        for (attribute attrI : instance.attributes){
+                        for (int i = 0; i < instance.attributes.size(); i++){
+                            attribute attrI = instance.attributes[i];
                             if (attrR.name.compare(attrI.name) == 0){
                                 if (attrR.value.compare(attrI.value) != 0){
                                     same = false;
@@ -241,18 +249,22 @@ class RulePostPrune{
 
         double Get_Total_Accuracy(vector<Instance> testSet){
             int correct = 0;
-            for (Instance instance : testSet){
-                for (Rule rule : ruleList){
+            for (int t = 0; t< testSet.size(); t++){
+                Instance instance = testSet[t];
+                for (int r = 0; r < ruleList.size(); r++){
+                    Rule rule = ruleList[r];
                     bool same = true;
-                    for (attribute attrR : rule.attributes){
+                    for (int a = 0; a < rule.attributes.size(); a++){
+                        attribute attrR = rule.attributes[a];
                         if (attrR.continuous){
                             string attrName = attrR.name.substr(0, attrR.name.find('>'));
                             string floatStr = attrR.name;
                             floatStr = floatStr.substr(floatStr.find('>') + 1, floatStr.length());
-                            double attrVal = stod(floatStr);
-                            for (attribute attrI : instance.attributes){
+                            double attrVal = atof(floatStr.c_str());
+                            for (int i = 0; i< instance.attributes.size(); i++){
+                                attribute attrI = instance.attributes[i];
                                 if (attrName.compare(attrI.name) == 0){
-                                    double instanceVal = stod(attrI.value);
+                                    double instanceVal = atof(attrI.value.c_str());
                                     if (instanceVal <= attrVal && attrR.value.compare("T") == 0 || instanceVal > attrVal && attrR.value.compare("F") == 0){
                                         same = false;
                                     }
@@ -261,7 +273,8 @@ class RulePostPrune{
                             }
                         }
                         else {
-                            for (attribute attrI : instance.attributes){
+                            for (int i = 0; i< instance.attributes.size(); i++){
+                                attribute attrI = instance.attributes[i];
                                 if (attrR.name.compare(attrI.name) == 0){    
                                     if (attrR.value.compare(attrI.value) != 0){
                                         same = false;
@@ -286,24 +299,28 @@ class RulePostPrune{
         }
 
         void Print_Rules(){
-            for (Rule rule : ruleList){
+            for (int r = 0; r <ruleList.size(); r++){
+                Rule rule = ruleList[r];
                 int count = 0;
-                for (attribute attr : rule.attributes){
+                for (int a = 0; a < rule.attributes.size(); a++){
+                    attribute attrR = rule.attributes[a];
                     count++;
-                    cout << attr.name << " = " << attr.value;
+                    cout << attrR.name << " = " << attrR.value;
                     if (count < rule.attributes.size()){
                         cout << ", ";
                     }
                 }
                 string trgCnt = "(";
                 for (int i = 0; i < TO.results.size(); i++){
-                    trgCnt += to_string(rule.targetCounts[i]);
+                    ostringstream oss;
+                    oss << rule.targetCounts[i];
+                    trgCnt += oss.str();
                     if (i < TO.results.size() - 1){
                         trgCnt += ",";
                     }
                 }
                 trgCnt += ")";
-                cout << " => "<<rule.result << " " << trgCnt << " "<< rule.accuracy << endl;
+                cout << " => "<<rule.result << " " << trgCnt << endl;
             }
         }
 };
@@ -318,7 +335,9 @@ class Tree{
         //converts double to string
         // reomves trailing zero
         string D_to_S (double value){
-            string str = to_string(value);
+            ostringstream oss;
+            oss << value;
+            string str = oss.str();
             while (str.length() > 1 && str.find('.') != string::npos && str[str.length()-1] == '0'){
                 str = str.substr(0, str.length()-1);
             }
@@ -369,7 +388,7 @@ class Tree{
                 int cntLower = 0;
                 int cntHigher = 0;
                 for (int j = 0; j < numInstances; j++){
-                    double instVal = stod(instances[j]->attributes[attrIndex].value);
+                    double instVal = atof(instances[j]->attributes[attrIndex].value.c_str());
                     if ( instVal > conVal){
                         subsetHigher.push_back(instances[j]);
                         cntHigher++;
@@ -436,8 +455,8 @@ class Tree{
                         leftIndex++;
                         continue;
                     }
-                    double leftVal = stod(left[leftIndex]->attributes[attrIndex].value);
-                    double rightVal = stod(right[rightIndex]->attributes[attrIndex].value);
+                    double leftVal = atof(left[leftIndex]->attributes[attrIndex].value.c_str());
+                    double rightVal = atof(right[rightIndex]->attributes[attrIndex].value.c_str());
                     if (leftVal < rightVal){
                         sorted.push_back(left[leftIndex]);
                         leftIndex++;
@@ -474,7 +493,7 @@ class Tree{
                             currentTarget = sortedInstances[i]->finalResult;
                         }
                         else if (currentTarget.compare(sortedInstances[i]->finalResult) != 0){
-                            double middle = stod(sortedInstances[i]->attributes[a].value) + stod(sortedInstances[i-1]->attributes[a].value);
+                            double middle = atof(sortedInstances[i]->attributes[a].value.c_str()) + atof(sortedInstances[i-1]->attributes[a].value.c_str());
                             middle = middle / 2;
                             bool used = false;
                             for (int c = 0; c < contUsed.size(); c++){
@@ -587,7 +606,7 @@ class Tree{
             Node* newNode = (Node*)malloc(sizeof(Node));
                         
             if (newNode == NULL) {
-                std::cerr << "Memory allocation failed" << std::endl;
+                cout << "Memory allocation failed" << endl;
                 exit(1);
             }
 
@@ -628,7 +647,7 @@ class Tree{
                 vector<Instance*> lowersubSet;
                 vector<Instance*> highersubSet;
                 for (int i = 0; i < instances.size(); i++){
-                    if (stod(instances[i]->attributes[attributeIndex].value) > continuousVal){
+                    if (atof(instances[i]->attributes[attributeIndex].value.c_str()) > continuousVal){
                         highersubSet.push_back(instances[i]);
                     }
                     else{
@@ -673,7 +692,9 @@ class Tree{
                 if (node->childHead == NULL){ // leafNode
                     string trgCnt = "(";
                     for (int i = 0; i < TO.results.size(); i++){
-                        trgCnt += to_string(node->targetCounts[i]);
+                        ostringstream str1;
+                        str1 << node->targetCounts[i];
+                        trgCnt += str1.str();
                         if (i < TO.results.size() - 1){
                             trgCnt += ",";
                         }
@@ -772,10 +793,10 @@ class Tree{
                     break;
                 }
                 if (AO.attributes[attributeIndex].continuous){
-                    double instanceVal = stod(instance.attributes[attributeIndex].value);
+                    double instanceVal = atof(instance.attributes[attributeIndex].value.c_str());
                     string floatStr = currentNode->parentAttribute;
                     floatStr = floatStr.substr(floatStr.find('>') + 1, floatStr.length());
-                    double attrVal = stod(floatStr);
+                    double attrVal = atof(floatStr.c_str());
                     // short-hand since we know the current branch is binary
                     if (instanceVal <= attrVal){
                         currentNode = currentNode->nextBranch;
@@ -805,7 +826,8 @@ class Tree{
         }
         double Get_Accuracy(vector<Instance> testSet){
             int correct = 0;
-            for (Instance testInstance : testSet){
+            for (int i = 0; i < testSet.size(); i++){
+                Instance testInstance = testSet[i];
                 if (Get_Prediction(testInstance).compare(testInstance.finalResult) == 0){
                     correct++;
                 }
@@ -847,7 +869,8 @@ class Tree{
                 // finding the best accuracy for each possible prune target
                 double bestAccuracy = 0;
                 Node* bestPruneNode;
-                for (Node* pruneTarget : nodesToPrune){
+                for (int n = 0; n < nodesToPrune.size(); n++){
+                    Node* pruneTarget = nodesToPrune[n];
                     Node* saveChild = pruneTarget->childHead;
                     pruneTarget->childHead = NULL;
                     double accuracy = Get_Accuracy(validationSet);
@@ -924,7 +947,6 @@ vector<instance> Add_Noise(vector<Instance> instances, bool* usedList, TargetOpt
         while (instances[index].finalResult.compare(TO.results[targetIndex]) == 0){
             targetIndex = rand() % TO.results.size();
         }
-        cout << "noising: " << index << endl;
         instances[index].finalResult = TO.results[targetIndex];
     }
     return instances;
@@ -1038,6 +1060,10 @@ void Get_Training_and_Verification_Sets(vector<Instance> instances, vector<Insta
 void Print_Instances(vector<Instance> instances);
 
 int main(int argc, char *argv[]) {
+    if (argc < 4){
+        cout << "Error: need more arguments" << endl;
+        exit(-1);
+    }
     srand(14);
     AttributeOptions AO;
     TargetOptions TO;
@@ -1095,14 +1121,16 @@ int main(int argc, char *argv[]) {
             tree.Print_Tree(); 
             cout << endl;
         }
-        cout << "Accuracy of Decision Tree: " << tree.Get_Accuracy(testInstances) << endl;
+        cout << "Accuracy of Decision Tree on training set: " << tree.Get_Accuracy(trainSet) << endl;
+        cout << "Accuracy of Decision Tree on test set: " << tree.Get_Accuracy(testInstances) << endl;
         if (prune){
             if(verbose) cout << endl << "--- Pruning tree ---" << endl;
             bool update = tree.Prune_Tree(verificationSet);
             if (update){
                 if(verbose) tree.Print_Tree(); 
                 if(verbose) cout << endl;
-                cout << "Accuracy of pruning tree: " << tree.Get_Accuracy(testInstances) << endl;
+                cout << "Accuracy of pruning tree on training set: " << tree.Get_Accuracy(trainSet) << endl;
+                cout << "Accuracy of pruning tree on test set: " << tree.Get_Accuracy(testInstances) << endl;
             }
             else{
                 if(verbose) cout << "No change" << endl;
@@ -1115,14 +1143,14 @@ int main(int argc, char *argv[]) {
             rpp.Prune_Rules(trainSet, verificationSet);
             if(verbose) rpp.Print_Rules(); 
             if(verbose) cout << endl;
-            cout << "Accuracy of rule-post pruning: " << rpp.Get_Total_Accuracy(testInstances) << endl;
+            cout << "Accuracy of rule-post pruning on training set: " << rpp.Get_Total_Accuracy(trainInstances) << endl;
+            cout << "Accuracy of rule-post pruning on test set: " << rpp.Get_Total_Accuracy(testInstances) << endl;
         }
 
         if (noise){
             noiseLevel += NOISE_ADDER;
             if( prune || rule ){
                 trainInstances = Add_Noise(trainInstances, usedList, TO);
-                listLength = trainInstances.size();
                 Get_Training_and_Verification_Sets(trainInstances, trainSet, verificationSet);
             }
             else{
