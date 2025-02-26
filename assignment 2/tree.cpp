@@ -11,7 +11,7 @@
 
 using namespace std;
 
-double PERCENTAGE_VALIDATION = 0.2;
+double PERCENTAGE_VALIDATION = 0.3;
 
 
 //linked list tree
@@ -20,6 +20,8 @@ typedef struct node{
     char* parentAttribute;
     char* value;
     char* nxtAttribute;
+    char* targetValue; //used for leaf node
+    int* targetCounts;
     struct node* nextBranch;
     struct node* childHead;
 } Node;
@@ -119,7 +121,7 @@ class Tree{
             for (int i = 0; i < TO.results.size(); i++) {
                 if (targetCounts[i] > 0) {
                     double probability = (double)targetCounts[i] / numInstances;
-                    entropy += -probability * log2(probability); // sum( - p_i * log2(p_i) )
+                    entropy += -1 * probability * log2(probability); // sum( - p_i * log2(p_i) )
                 }
             }
             return entropy;
@@ -146,9 +148,9 @@ class Tree{
                         cntLower++;
                     }
                 }
-                double prob = (double) cntLower / numInstances;
+                double prob = (double)cntLower / numInstances;
                 result += prob * Entropy(subsetLower);
-                prob = (double) cntHigher / numInstances;
+                prob = (double)cntHigher / numInstances;
                 result += prob * Entropy(subsetHigher);
             }
             else{
@@ -301,8 +303,8 @@ class Tree{
             return TO.results[bestValue];
         }
 
-        Node* Create_leaf_Node(vector<Instance*> instances, string value){
-            int cnt[TO.results.size()];
+        int* Get_Target_Counts(vector<Instance*> instances){
+            int* cnt = (int*)malloc(TO.results.size() * sizeof(int));
             string result = "(";
             for (int i = 0; i < TO.results.size(); i++){
                 cnt [i] = 0;
@@ -315,40 +317,20 @@ class Tree{
                     }
                 }
             }
-            for (int i = 0; i < TO.results.size(); i++){
-                result += to_string(cnt[i]);
-                if (i+1 < TO.results.size()){
-                    result += ",";
-                }
-            }
-            result += ")";
-
-            Node* leafNode = (Node*)malloc(sizeof(Node));
-            leafNode->childHead = NULL;
-            leafNode->nextBranch = NULL;
-            leafNode->parentAttribute = NULL;
-
-            leafNode->nxtAttribute = (char*)malloc(result.length()*sizeof(char));
-            strcpy(leafNode->nxtAttribute, result.c_str());
-
-            leafNode->value = (char*)malloc(value.length()*sizeof(char));
-            strcpy(leafNode->value, value.c_str());
-
-            return leafNode;
+            return cnt;
         }
         
-        bool Check_Empty_Attribute(vector<Instance*> instances, Node* newNode, string parentMajorityTarget){
+        bool Check_Empty_Attribute(vector<Instance*> instances){
             // Check if all attributes have been used. take the most common target value
             for (int i = 0; i < AO.attributes.size(); i++){
                 if (!AO.attributes[i].used){ 
                     return false;
                 }
             }
-            newNode->childHead = Create_leaf_Node(instances, parentMajorityTarget.c_str());
             return true;
         }
 
-        bool Check_Same_Target(vector<Instance*> instances, Node* newNode){
+        bool Check_Same_Target(vector<Instance*> instances){
             string targetTest = "";
 
             // Check if all instances have the same target
@@ -360,8 +342,6 @@ class Tree{
                     return false;
                 }
             }
-            newNode->childHead = Create_leaf_Node(instances, targetTest);
-
             return true;
         }
 
@@ -387,20 +367,24 @@ class Tree{
             int attributeIndex = Find_Best_Attribute(instances, &continuousVal, contUsed);
             newNode->nxtAttribute = (char*)malloc(AO.attributes[attributeIndex].name.length()*sizeof(char));
             strcpy(newNode->nxtAttribute, AO.attributes[attributeIndex].name.c_str());
-            
+
+            newNode->targetCounts = Get_Target_Counts(instances);
             newNode->childHead = NULL;
             newNode->nextBranch = NULL;
 
-            if (instances.size() == 0){ // ran out of examples
-                newNode->childHead = Create_leaf_Node(instances, parentMajorityTarget);
-                return newNode;
-            }
-
-            if (Check_Empty_Attribute(instances, newNode, parentMajorityTarget) || Check_Same_Target(instances, newNode)){ // ranout of attributes or all instances have the same target
+            if (instances.size() == 0){ //end case: out of instances
+                newNode->targetValue = (char*)malloc(parentMajorityTarget.length()*sizeof(char));
+                strcpy(newNode->targetValue, parentMajorityTarget.c_str());
                 return newNode;
             }
 
             string currentMajority = Get_Majority(instances);
+            newNode->targetValue = (char*)malloc(currentMajority.length()*sizeof(char));
+            strcpy(newNode->targetValue, currentMajority.c_str());
+
+            if (Check_Same_Target(instances) || Check_Empty_Attribute(instances)){ // end case: all instances have the same target or all attributes have been used
+                return newNode;
+            }
 
             if (AO.attributes[attributeIndex].continuous){
                 vector<Instance*> lowersubSet;
@@ -448,8 +432,16 @@ class Tree{
         void Tree_Print_Recursive(Node* node, string indent, bool first = true){
             if (!first){
                 cout << indent << node->parentAttribute << " = "<< node->value;
-                if (node->childHead->childHead == NULL){
-                    cout << " : " << node->childHead->value << " " << node->childHead->nxtAttribute << endl;
+                if (node->childHead == NULL){ // leafNode
+                    string trgCnt = "(";
+                    for (int i = 0; i < TO.results.size(); i++){
+                        trgCnt += to_string(node->targetCounts[i]);
+                        if (i < TO.results.size() - 1){
+                            trgCnt += ",";
+                        }
+                    }
+                    trgCnt += ")";
+                    cout << " : " << node->targetValue << " " << trgCnt << endl;
                     return;
                 }
                 cout << endl;
@@ -487,6 +479,143 @@ class Tree{
             Tree_Print_Recursive(treeHead, "");
         }
 
+        void Print_Targets(){
+            cout << "------------Targets------------" << endl;
+            cout << "Targets: "<<  TO.results.size() << endl;
+            cout << TO.name << ": ";
+            for (int i = 0; i < TO.results.size(); i++){
+                cout << TO.results[i] << " ";
+            }
+            cout << endl;
+        }
+
+        string Get_Prediction(Instance instance){
+            node* currentNode = treeHead;
+            while (currentNode!= NULL){
+                int attributeIndex;
+                for (int i = 0; i < AO.attributes.size(); i++){
+                    if (strcmp(AO.attributes[i].name.c_str(), currentNode->nxtAttribute) == 0){
+                        attributeIndex = i;
+                        break;
+                    }
+                }
+                currentNode = currentNode->childHead;
+                if (currentNode == NULL){
+                    break;
+                }
+                if (AO.attributes[attributeIndex].continuous){
+                    double instanceVal = stod(instance.attributes[attributeIndex].value);
+                    string floatStr = currentNode->parentAttribute;
+                    floatStr = floatStr.substr(floatStr.find('>') + 1, floatStr.length());
+                    double attrVal = stod(floatStr);
+                    // short-hand since we know the current branch is binary
+                    if (instanceVal <= attrVal){
+                        currentNode = currentNode->nextBranch;
+                    }
+                }
+                else{
+                    while(currentNode != NULL){
+                        if (strcmp(currentNode->value, instance.attributes[attributeIndex].value.c_str()) == 0){
+                            break;
+                        }
+                        currentNode = currentNode->nextBranch;
+                    }
+                    if (currentNode == NULL){
+                        cout << "Error Prediction" << endl;
+                        exit(-1);
+                    }
+                }
+                if (currentNode->childHead == NULL){
+                    break;
+                }
+            }
+            if (currentNode == NULL){
+                cout << "Error End Prediction" << endl;
+                exit(-1);
+            }
+            return currentNode->targetValue;
+        }
+        double Get_Accuracy(vector<Instance> testSet){
+            int correct = 0;
+            for (Instance testInstance : testSet){
+                if (Get_Prediction(testInstance).compare(testInstance.finalResult) == 0){
+                    correct++;
+                }
+            }
+            return (double)correct / testSet.size();
+        }
+
+        bool Prune_Tree(vector<Instance> validationSet){
+            double noPruneAccuracy = Get_Accuracy(validationSet);
+            bool anyChange = false;
+            bool update = true;
+            while (update){
+                vector <Node*> nodesToPrune;
+                vector <Node*> nodeQueue;
+
+                // finding all the nodes that can be pruned
+                nodeQueue.push_back(treeHead);
+                while(!nodeQueue.empty()){
+                    Node* headNode = nodeQueue.front();
+                    Node* currentNode = headNode->childHead;
+                    nodeQueue.erase(nodeQueue.begin());
+                    if (currentNode == NULL){
+                        cout << "Error Pruning: NULL node traversal" << endl;
+                        exit(-1);
+                    }
+                    bool allLeaf = true;
+                    while (currentNode != NULL){
+                        if (currentNode->childHead != NULL){
+                            allLeaf = false;
+                            nodeQueue.push_back(currentNode);
+                        }
+                        currentNode = currentNode->nextBranch;
+                    }
+                    if (allLeaf){
+                        nodesToPrune.push_back(headNode);
+                    }
+                }
+
+                // finding the best accuracy for each possible prune target
+                double bestAccuracy = 0;
+                Node* bestPruneNode;
+                for (Node* pruneTarget : nodesToPrune){
+                    Node* saveChild = pruneTarget->childHead;
+                    pruneTarget->childHead = NULL;
+                    double accuracy = Get_Accuracy(validationSet);
+                    if (accuracy > bestAccuracy){
+                        bestAccuracy = accuracy;
+                        bestPruneNode = pruneTarget;
+                    }
+                    // returning the values
+                    pruneTarget->childHead = saveChild;
+                }
+
+                // updating the tree with the best prune
+                if (bestAccuracy > noPruneAccuracy){
+                    Node* tempNext;
+                    Node* tempChild = bestPruneNode->childHead;              
+                    bestPruneNode->childHead = NULL;
+                    while (tempChild != NULL)
+                    {
+                        tempNext = tempChild->nextBranch;
+                        free(tempChild->parentAttribute);
+                        free(tempChild->value);
+                        free(tempChild->nxtAttribute);
+                        free(tempChild->targetValue);
+                        free(tempChild->targetCounts);
+                        free(tempChild);
+                        tempChild = tempNext;
+                    }
+                    anyChange = true;
+                }
+                else{
+                    update = false;
+                }
+            }
+            return anyChange;
+        }
+
         // These are for testing purposes
         void Print_Attributes(){
             cout << "------------Attributes------------" << endl;
@@ -503,104 +632,6 @@ class Tree{
                     }
                 }
                 cout << endl;
-            }
-        }
-
-        void Print_Targets(){
-            cout << "------------Targets------------" << endl;
-            cout << "Targets: "<<  TO.results.size() << endl;
-            cout << TO.name << ": ";
-            for (int i = 0; i < TO.results.size(); i++){
-                cout << TO.results[i] << " ";
-            }
-            cout << endl;
-        }
-
-        string Get_Prediction(Instance Instances){
-            node* currentNode = treeHead;
-            while (currentNode!= NULL){
-                int attributeIndex;
-                for (int i = 0; i < AO.attributes.size(); i++){
-                    if (strcmp(AO.attributes[i].name.c_str(), currentNode->nxtAttribute) == 0){
-                        attributeIndex = i;
-                        break;
-                    }
-                }
-                currentNode = currentNode->childHead;
-                if (currentNode->childHead == NULL){
-                    break;
-                }
-                bool foundChild = false;
-                if (AO.attributes[attributeIndex].continuous){
-                    double instanceVal = stod(Instances.attributes[attributeIndex].value);
-                    string floatStr = currentNode->parentAttribute;
-                    floatStr = floatStr.substr(floatStr.find('>') + 1, floatStr.length());
-                    double greaterThan = stod(floatStr);
-                    // short-hand since we know the current branch is binary
-                    if (instanceVal <= greaterThan){
-                        currentNode = currentNode->nextBranch;
-                    }
-                }
-                else{
-                    while(currentNode != NULL && !foundChild){
-                            if (strcmp(currentNode->value, Instances.attributes[attributeIndex].value.c_str()) == 0){
-                                foundChild = true;
-                                break;
-                            }
-                        }
-                        currentNode = currentNode->nextBranch;
-
-                    if (currentNode == NULL){
-                        cout << "Error Prediction" << endl;
-                        exit(-1);
-                    }
-                }
-            }
-            if (currentNode == NULL){
-                cout << "Error End Prediction" << endl;
-                exit(-1);
-            }
-            return currentNode->value;
-        }
-        double Get_Accuracy(vector<Instance> validationSet){
-            int correct = 0;
-            for (int i = 0; i < validationSet.size(); i++){
-                if (Get_Prediction(validationSet[i]).compare(validationSet[i].finalResult) == 0){
-                    correct++;
-                }
-            }
-            return (double)correct / validationSet.size();
-        }
-
-        void Prune_Tree(vector<Instance> verificationSet){
-            double noPruneAccuracy = Get_Accuracy(verificationSet);
-
-            vector <Node*> nodesToPrune;
-            vector <Node*> nodeQueue;
-            nodeQueue.push_back(treeHead);
-            while(nodeQueue.size() > 0){
-                Node* currentNode = nodeQueue[0];
-                nodeQueue.erase(nodeQueue.begin());
-                while (currentNode != NULL){
-                    if (currentNode->childHead == NULL){
-                        cout << "Error Pruning: node tree traversal" << endl;
-                        exit(-1);
-                    }
-
-                    if (currentNode->childHead->nxtAttribute == NULL){
-                        nodesToPrune.push_back(currentNode);
-                    }
-                    else{
-                        nodeQueue.push_back(currentNode->childHead);
-                    }
-                    currentNode = currentNode->nextBranch;
-                }
-            }
-            for (int i = 0; i < nodesToPrune.size(); i++){
-                Node* tempParent = nodesToPrune[i];
-                Node* tempChild = nodesToPrune[i]->childHead;
-                Node* tempParent = 
-
             }
         }
 }; // END Tree
@@ -751,6 +782,17 @@ int main(int argc, char *argv[]) {
     tree.Learn(trainSet);
     tree.Print_Tree();
     cout << "Accuracy: " << tree.Get_Accuracy(testInstances) << endl;
+    if (prune){
+        cout << endl << "Pruning tree ..." << endl;
+        bool update = tree.Prune_Tree(verificationSet);
+        if (update){
+            tree.Print_Tree();
+            cout << "Accuracy: " << tree.Get_Accuracy(testInstances) << endl;
+        }
+        else{
+            cout << "No change" << endl;
+        }
+    }
 
     return 0;
 }
