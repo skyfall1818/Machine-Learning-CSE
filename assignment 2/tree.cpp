@@ -12,7 +12,8 @@
 using namespace std;
 
 double PERCENTAGE_VALIDATION = 0.3;
-
+double NOISE_ADDER = 0.02;
+double MAX_NOISE = 0.2;
 
 //linked list tree
 // for leaf nodes: value is the target result and nxtAttribute is the count output
@@ -62,27 +63,257 @@ typedef struct continuousUsed{
     double value;
 }ContinuousBool;
 
-Attribute Copy_Attribute(Attribute attributes){
-    Attribute new_attribute;
-    new_attribute.name = attributes.name;
-    new_attribute.value = attributes.value;
-    return new_attribute;
-}
+typedef struct rule{
+    vector<attribute> attributes;
+    string result;
+    int* targetCounts;
+    double accuracy;
+}Rule;
 
-Instance Copy_Instance(Instance instance){
-    Instance new_instance;
-    for (int i = 0; i < instance.attributes.size(); i++){
-        new_instance.attributes.push_back(Copy_Attribute(instance.attributes[i]));
-    }
-    new_instance.finalResult = instance.finalResult;
-    return new_instance;
-}
+class RulePostPrune{
+    private:
+        AttributeOptions AO;
+        TargetOptions TO;
+        vector<Rule> ruleList;
+
+        double Get_Accuracy(Rule rule, vector<Instance> testSet){
+            int correct = 0;
+            int count = 0;
+            for (Instance instance : testSet){
+                bool same = true;
+                for (attribute attrR : rule.attributes){
+                    if (attrR.continuous){
+                        string attrName = attrR.name.substr(0, attrR.name.find('>'));
+                        string floatStr = attrR.name;
+                        floatStr = floatStr.substr(floatStr.find('>') + 1, floatStr.length());
+                        double attrVal = stod(floatStr);
+                        for (attribute attrI : instance.attributes){
+                            if (attrName.compare(attrI.name) == 0){
+                                double instanceVal = stod(attrI.value);
+                                if (instanceVal <= attrVal && attrR.value.compare("T") == 0 || instanceVal > attrVal && attrR.value.compare("F") == 0){
+                                    same = false;
+                                }
+                                break;
+                            }
+                        }
+                    }
+                    else {
+                        for (attribute attrI : instance.attributes){
+                            if (attrR.name.compare(attrI.name) == 0){
+                                if (attrR.value.compare(attrI.value) != 0){
+                                    same = false;
+                                }
+                                break;
+                            }
+                        }
+                    }
+                    if (!same){
+                        break;
+                    }
+                }
+                if (same){
+                    if (rule.result.compare(instance.finalResult) == 0){
+                        correct++;
+                    }
+                    count++;
+                }
+            }
+            return (double)correct / count;
+        }
+
+        int* Get_Target_Counts(Rule rule, vector<Instance> testSet){
+            int* targetCounts = (int*)malloc(TO.results.size()*sizeof(int));
+            for (int i = 0; i < TO.results.size(); i++){
+                targetCounts[i] = 0;
+            }
+            for (Instance instance : testSet){
+                bool same = true;
+                for (attribute attrR : rule.attributes){
+                    if (attrR.continuous){
+                        string attrName = attrR.name.substr(0, attrR.name.find('>'));
+                        string floatStr = attrR.name;
+                        floatStr = floatStr.substr(floatStr.find('>') + 1, floatStr.length());
+                        double attrVal = stod(floatStr);
+                        for (attribute attrI : instance.attributes){
+                            if (attrName.compare(attrI.name) == 0){
+                                double instanceVal = stod(attrI.value);
+                                if (instanceVal <= attrVal && attrR.value.compare("T") == 0 || instanceVal > attrVal && attrR.value.compare("F") == 0){
+                                    same = false;
+                                }
+                                break;
+                            }
+                        }
+                    }
+                    else {
+                        for (attribute attrI : instance.attributes){
+                            if (attrR.name.compare(attrI.name) == 0){
+                                if (attrR.value.compare(attrI.value) != 0){
+                                    same = false;
+                                }
+                                break;
+                            }
+                        }
+                    }
+                    if (!same){
+                        break;
+                    }
+                }
+                if (same && rule.result.compare(instance.finalResult) == 0){
+                    for (int i = 0; i < TO.results.size(); i++){
+                        if (TO.results[i].compare(instance.finalResult) == 0){
+                            targetCounts[i] += 1;
+                        }
+                    }
+                }
+            }
+            return targetCounts;
+        }
+
+        vector<Rule> Sort_Rules(vector<Rule> rules){
+            if (rules.size() <= 1){
+                return rules;
+            }
+            vector<Rule> left, right;
+            int half = (double)rules.size() / 2.0;
+            for (int i = 0; i < half; i++){
+                left.push_back(rules[i]);
+            }
+            for (int i = half; i < rules.size(); i++){
+                right.push_back(rules[i]);
+            }
+            left = Sort_Rules(left);
+            right = Sort_Rules(right);
+
+            int leftIndex = 0, rightIndex = 0;
+            vector<Rule> result;
+            while (leftIndex < left.size() && rightIndex < right.size()){
+                if (left[leftIndex].accuracy > right[rightIndex].accuracy){
+                    result.push_back(left[leftIndex]);
+                    leftIndex++;
+                }
+                else{
+                    result.push_back(right[rightIndex]);
+                    rightIndex++;
+                }
+            }
+            while (leftIndex < left.size()){
+                result.push_back(left[leftIndex]);
+                leftIndex++;
+            }
+            while (rightIndex < right.size()){
+                result.push_back(right[rightIndex]);
+                rightIndex++;
+            }
+            return result;
+        }
+
+    public:
+        RulePostPrune(vector<Rule> rules, vector<Instance> testSet, AttributeOptions* attrOptions, TargetOptions* targetOptions){
+            ruleList = rules;
+            AO = *attrOptions;
+            TO = *targetOptions;
+            for (int i = 0; i < ruleList.size(); i++){
+                ruleList[i].accuracy = Get_Accuracy(ruleList[i], testSet);
+            }
+        }
+
+        void Prune_Rules(vector<Instance> trainSet, vector<Instance> validationSet){
+            for (int i = 0; i < ruleList.size(); i++){
+                bool change = true;
+                while (ruleList[i].attributes.size() > 0 && change){
+                    double currentAccuracy = Get_Accuracy(ruleList[i], validationSet);
+                    attribute attrSave = ruleList[i].attributes[ruleList[i].attributes.size()-1];
+                    ruleList[i].attributes.pop_back();
+                    double newAccuracy = Get_Accuracy(ruleList[i], validationSet);
+                    if (newAccuracy < currentAccuracy){
+                        ruleList[i].attributes.push_back(attrSave);
+                        change = false;
+                        ruleList[i].accuracy = currentAccuracy;
+                    }
+                    else{
+                        ruleList[i].accuracy = newAccuracy;
+                    }
+                }
+                ruleList[i].targetCounts = Get_Target_Counts(ruleList[i], trainSet);
+            }
+            ruleList = Sort_Rules(ruleList);
+        }
+
+        double Get_Total_Accuracy(vector<Instance> testSet){
+            int correct = 0;
+            for (Instance instance : testSet){
+                for (Rule rule : ruleList){
+                    bool same = true;
+                    for (attribute attrR : rule.attributes){
+                        if (attrR.continuous){
+                            string attrName = attrR.name.substr(0, attrR.name.find('>'));
+                            string floatStr = attrR.name;
+                            floatStr = floatStr.substr(floatStr.find('>') + 1, floatStr.length());
+                            double attrVal = stod(floatStr);
+                            for (attribute attrI : instance.attributes){
+                                if (attrName.compare(attrI.name) == 0){
+                                    double instanceVal = stod(attrI.value);
+                                    if (instanceVal <= attrVal && attrR.value.compare("T") == 0 || instanceVal > attrVal && attrR.value.compare("F") == 0){
+                                        same = false;
+                                    }
+                                    break;
+                                }
+                            }
+                        }
+                        else {
+                            for (attribute attrI : instance.attributes){
+                                if (attrR.name.compare(attrI.name) == 0){    
+                                    if (attrR.value.compare(attrI.value) != 0){
+                                        same = false;
+                                    }
+                                    break;
+                                }
+                            }
+                        }
+                        if (!same){
+                            break;
+                        }
+                    }
+                    if (same){
+                        if (rule.result.compare(instance.finalResult) == 0){
+                            correct++;
+                        }
+                        break;
+                    }
+                }
+            }
+            return (double)correct / testSet.size();
+        }
+
+        void Print_Rules(){
+            for (Rule rule : ruleList){
+                int count = 0;
+                for (attribute attr : rule.attributes){
+                    count++;
+                    cout << attr.name << " = " << attr.value;
+                    if (count < rule.attributes.size()){
+                        cout << ", ";
+                    }
+                }
+                string trgCnt = "(";
+                for (int i = 0; i < TO.results.size(); i++){
+                    trgCnt += to_string(rule.targetCounts[i]);
+                    if (i < TO.results.size() - 1){
+                        trgCnt += ",";
+                    }
+                }
+                trgCnt += ")";
+                cout << " => "<<rule.result << " " << trgCnt << " "<< rule.accuracy << endl;
+            }
+        }
+};
 
 class Tree{
     private:
         AttributeOptions AO;
         TargetOptions TO;
         Node* treeHead;
+        vector<Rule> ruleList;
 
         //converts double to string
         // reomves trailing zero
@@ -224,12 +455,12 @@ class Tree{
         }
 
         int Find_Best_Attribute(vector<Instance*> instances, double* continuousVal, vector<ContinuousBool> contUsed){
-            int bestAttr;
-            double bestInfoGain = 0.0;
+            int bestAttr = -1;
+            double bestInfoGain = -1.0;
             bool first = true;
             int AOLength = AO.attributes.size();
-            double information;
-            double bestContVal;
+            double information = -1.0;
+            double bestContVal = -1.0;
 
             for (int a = 0; a < AOLength; a++){
                 if (AO.attributes[a].used) continue; //skipping any already used attributes
@@ -278,7 +509,9 @@ class Tree{
                 if (first || information < bestInfoGain) { // using minimun based on the rewritten information gain of -sum(p log2(p))
                     first = false;
                     bestInfoGain = information;
-                    *continuousVal = bestContVal;
+                    if (AO.attributes[a].continuous){
+                        *continuousVal = bestContVal;
+                    }
                     bestAttr = a;
                 }
             }
@@ -348,7 +581,7 @@ class Tree{
         Node* Make_Tree(vector<Instance*> instances, string parentAttribute, string instanceValue, string parentMajorityTarget, vector<ContinuousBool> contUsed){
             Node* tempNode;
             Node* nxtNode;
-            double continuousVal;
+            double continuousVal = 0.0;
 
             // initializing current node
             Node* newNode = (Node*)malloc(sizeof(Node));
@@ -363,14 +596,19 @@ class Tree{
 
             newNode->value = (char*)malloc(instanceValue.length()*sizeof(char));
             strcpy(newNode->value, instanceValue.c_str());
-
-            int attributeIndex = Find_Best_Attribute(instances, &continuousVal, contUsed);
-            newNode->nxtAttribute = (char*)malloc(AO.attributes[attributeIndex].name.length()*sizeof(char));
-            strcpy(newNode->nxtAttribute, AO.attributes[attributeIndex].name.c_str());
-
+            
             newNode->targetCounts = Get_Target_Counts(instances);
             newNode->childHead = NULL;
             newNode->nextBranch = NULL;
+
+            int attributeIndex = Find_Best_Attribute(instances, &continuousVal, contUsed);
+            if (continuousVal == -1.0){ // end case: ran out of attributes for continuous
+                newNode->targetValue = (char*)malloc(parentMajorityTarget.length()*sizeof(char));
+                strcpy(newNode->targetValue, parentMajorityTarget.c_str());
+                return newNode;
+            }
+            newNode->nxtAttribute = (char*)malloc(AO.attributes[attributeIndex].name.length()*sizeof(char));
+            strcpy(newNode->nxtAttribute, AO.attributes[attributeIndex].name.c_str());
 
             if (instances.size() == 0){ //end case: out of instances
                 newNode->targetValue = (char*)malloc(parentMajorityTarget.length()*sizeof(char));
@@ -414,7 +652,7 @@ class Tree{
                         }
                     }
                     AO.attributes[attributeIndex].used = true;
-                    nxtNode = Make_Tree(subset, AO.attributes[attributeIndex].name,AO.attributes[attributeIndex].values[j], currentMajority, contUsed);
+                    nxtNode = Make_Tree(subset, AO.attributes[attributeIndex].name, AO.attributes[attributeIndex].values[j], currentMajority, contUsed);
                     AO.attributes[attributeIndex].used = false;
                     if (newNode->childHead == NULL){
                         newNode->childHead = nxtNode;
@@ -447,10 +685,40 @@ class Tree{
                 cout << endl;
                 indent += "|   ";
             }
-
             Node* tempNode = node->childHead;
             while (tempNode != NULL){
                 Tree_Print_Recursive(tempNode, indent, false);
+                tempNode = tempNode->nextBranch;
+            }
+        }
+
+        void Get_Rule_Recursion(Node* head, vector<attribute> attributes, bool first = true){
+            if (!first){
+                attribute att;
+                att.name = head->parentAttribute;
+                att.continuous = false;
+                if ((int)att.name.find('>') > -1){
+                    att.continuous = true;
+                }
+                att.value = head->value;
+                attributes.push_back(att);
+            }
+            if (head->childHead == NULL){
+                Rule rule;
+                rule.attributes = attributes;
+                rule.result = head->targetValue;
+                rule.targetCounts = (int*)malloc(TO.results.size()*sizeof(int));
+                for (int i = 0; i < TO.results.size(); i++){
+                    rule.targetCounts[i] = head->targetCounts[i];
+                }
+                rule.accuracy = 0.0;
+                ruleList.push_back(rule);
+                attributes.pop_back();
+                return;
+            }
+            Node* tempNode = head->childHead;
+            while (tempNode != NULL){
+                Get_Rule_Recursion(tempNode, attributes, false);
                 tempNode = tempNode->nextBranch;
             }
         }
@@ -616,6 +884,12 @@ class Tree{
             return anyChange;
         }
 
+        vector<Rule> Convert_To_Rules(){
+            vector<attribute> attributes;
+            Get_Rule_Recursion(treeHead, attributes);
+            return ruleList;
+        }
+
         // These are for testing purposes
         void Print_Attributes(){
             cout << "------------Attributes------------" << endl;
@@ -635,6 +909,26 @@ class Tree{
             }
         }
 }; // END Tree
+
+vector<instance> Add_Noise(vector<Instance> instances, bool* usedList, TargetOptions TO){
+    int addnoise = instances.size() * NOISE_ADDER;
+    int numInstances = instances.size();
+    for (int i = 0; i < addnoise; i++){
+        int index = rand() % numInstances;
+        while (usedList[index]){
+            index = rand() % numInstances;
+        }
+        usedList[index] = true;
+
+        int targetIndex = rand() % TO.results.size();
+        while (instances[index].finalResult.compare(TO.results[targetIndex]) == 0){
+            targetIndex = rand() % TO.results.size();
+        }
+        cout << "noising: " << index << endl;
+        instances[index].finalResult = TO.results[targetIndex];
+    }
+    return instances;
+}
 
 
 void Read_Attributes_File(char* fileName, AttributeOptions& AO, TargetOptions& TO){
@@ -744,17 +1038,19 @@ void Get_Training_and_Verification_Sets(vector<Instance> instances, vector<Insta
 void Print_Instances(vector<Instance> instances);
 
 int main(int argc, char *argv[]) {
-    cout << "Number of arguments: " << argc << std::endl;
-    for (int i = 0; i < argc; ++i) {
-        cout << "Argument " << i << ": " << argv[i] << std::endl;
-    }
-    cout << endl;
-
+    srand(14);
     AttributeOptions AO;
     TargetOptions TO;
-    vector<Instance> trainSet, verificationSet;
+    vector<Instance> trainSet, verificationSet, trainInstances;
     bool prune = false;
     bool rule = false;
+    bool verbose = false;
+    bool noise = false;
+
+    bool* usedList = NULL;
+    int listLength;
+    double noiseLevel = 0.0;
+
     char* attrFile = argv[1];
     char* trainFile = argv[2];
     char* testFile = argv[3];
@@ -765,35 +1061,76 @@ int main(int argc, char *argv[]) {
         else if (strcmp(argv[i], "--rule") == 0){
             rule = true;
         }
+        else if (strcmp(argv[i], "--v") == 0 || strcmp(argv[i], "-verbose") == 0){
+            verbose = true;
+        }
+        else if (strcmp(argv[i], "--noise") == 0){
+            noise = true;
+        }
     }
     Read_Attributes_File(attrFile, AO, TO);
+    vector<instance> testInstances = Read_Instance_File(testFile, AO, TO);
 
-    if (prune){
-        vector<instance> trainInstances = Read_Instance_File(trainFile, AO, TO);
+    if (prune || rule){
+        trainInstances = Read_Instance_File(trainFile, AO, TO);
+        listLength = trainInstances.size();
         Get_Training_and_Verification_Sets(trainInstances, trainSet, verificationSet);
     }
     else{
         trainSet = Read_Instance_File(trainFile, AO, TO);
+        listLength = trainSet.size();
     }
 
-    vector<instance> testInstances = Read_Instance_File(testFile, AO, TO);
-    
-    Tree tree(&AO, &TO);
-    tree.Learn(trainSet);
-    tree.Print_Tree();
-    cout << "Accuracy: " << tree.Get_Accuracy(testInstances) << endl;
-    if (prune){
-        cout << endl << "Pruning tree ..." << endl;
-        bool update = tree.Prune_Tree(verificationSet);
-        if (update){
-            tree.Print_Tree();
-            cout << "Accuracy: " << tree.Get_Accuracy(testInstances) << endl;
-        }
-        else{
-            cout << "No change" << endl;
-        }
+    usedList = (bool*)malloc(listLength*sizeof(bool));
+    for (int i = 0; i < listLength; i++){
+        usedList[i] = false;
     }
 
+    do{
+        if (noise){ cout << "______________ Noise Level: " << noiseLevel << " ______________" << endl << endl; }
+        Tree tree(&AO, &TO);
+        tree.Learn(trainSet);
+        if(verbose){
+            cout << "--- Printing Decision Tree ---" << endl;
+            tree.Print_Tree(); 
+            cout << endl;
+        }
+        cout << "Accuracy of Decision Tree: " << tree.Get_Accuracy(testInstances) << endl;
+        if (prune){
+            if(verbose) cout << endl << "--- Pruning tree ---" << endl;
+            bool update = tree.Prune_Tree(verificationSet);
+            if (update){
+                if(verbose) tree.Print_Tree(); 
+                if(verbose) cout << endl;
+                cout << "Accuracy of pruning tree: " << tree.Get_Accuracy(testInstances) << endl;
+            }
+            else{
+                if(verbose) cout << "No change" << endl;
+            }
+        }
+
+        if (rule){
+            if(verbose) cout << endl << "--- Rule Post Pruning ---" << endl;
+            RulePostPrune rpp = RulePostPrune( tree.Convert_To_Rules(), verificationSet,&AO, &TO);
+            rpp.Prune_Rules(trainSet, verificationSet);
+            if(verbose) rpp.Print_Rules(); 
+            if(verbose) cout << endl;
+            cout << "Accuracy of rule-post pruning: " << rpp.Get_Total_Accuracy(testInstances) << endl;
+        }
+
+        if (noise){
+            noiseLevel += NOISE_ADDER;
+            if( prune || rule ){
+                trainInstances = Add_Noise(trainInstances, usedList, TO);
+                listLength = trainInstances.size();
+                Get_Training_and_Verification_Sets(trainInstances, trainSet, verificationSet);
+            }
+            else{
+                trainSet = Add_Noise(trainSet, usedList, TO);
+            }
+            cout << endl;
+        }
+    } while (noise && noiseLevel <= MAX_NOISE);
     return 0;
 }
 
