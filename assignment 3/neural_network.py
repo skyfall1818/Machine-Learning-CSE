@@ -9,9 +9,9 @@ class Node:
         self.sigmoid = sigmoid
     def reset_node(self):
         self.net = 0
-    def get_val(self)
+    def get_val(self):
         if self.sigmoid:
-            return sigmoid_function(self.net)
+            return self.sigmoid_function(self.net)
         return self.net
     def add_val(self, val):
         self.net += val
@@ -20,7 +20,7 @@ class Node:
         return 1 / (1 + math.exp(-val))
     def getDerivative(self):
         if self.sigmoid:
-            s = sigmoid_function(self.net)
+            s = self.sigmoid_function(self.net)
             return s(1-s) # ds(x)/dx = s(x)[1-s(x)]
         return 1
 
@@ -46,10 +46,10 @@ class Network:
         total = [0 for _ in range(outputlength)]
         for i in range(nodelength):
             for j in range(outputlength):
-                total[j] += node[i] * weight[i][j]
+                total[j] += node[i] * weights[i][j]
         return total
     
-    def get_output(self, inputNode):
+    def get_output(self, inputNode, outputNode = False):
         inputNode.append(1) # include a constant
         
         out = self.matrix_multiply(inputNode, self.inputWeights, self.numInputNodes + 1, self.numHiddenNodes)
@@ -61,11 +61,21 @@ class Network:
         out = self.matrix_multiply(hidden, self.outputNodes, self.numHiddenNodes + 1, self.numOutputNodes)
         for i, val in enumerate(out):
             self.outputNodes[i].add_val(val)
+        
+        if outputNode:
+            return self.outputNodes
         return [self.outputNodes[i].get_val for i in range(self.numOutputNodes)]
 
     def back_propogate(self, input, expectedOut):
         self.reset_nodes()
-        out = self.get_output(input)
-        
-        
-        
+        out = self.get_output(input, True)
+
+        deltaError = [(expectedOut[i] - out[i].get_val()) * out[i].getDerivative() for i in range(self.numOutputNodes)]
+
+        deltahidden = [0 for _ in range(self.numHiddenNodes + 1)]
+        for i in range(self.numHiddenNodes + 1):
+            deltahidden[i] = self.hiddenNodes[i].getDerivative() * sum([deltaError[j] * self.hiddenWeights[i][j] for j in range(self.numOutputNodes)])
+
+        for i in range(self.numHiddenNodes + 1):
+            for j in range(self.numOutputNodes):
+                self.hiddenWeights[i][j] += self.learningRate * deltahidden[j] * self.hiddenNodes[i].get_val()
