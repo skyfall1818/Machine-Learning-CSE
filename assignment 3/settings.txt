@@ -1,0 +1,4 @@
+Number Hidden=3
+Learning Rate=0.03
+Momentum=0.1
+Number Iterations=20
