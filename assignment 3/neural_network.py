@@ -29,7 +29,7 @@ class Node:
     def getDerivative(self):
         if self.sigmoid:
             s = self.sigmoid_function(self.net)
-            return s(1-s) # ds(x)/dx = s(x)[1-s(x)]
+            return s * (1-s) # ds(x)/dx = s(x)[1-s(x)]
         return 1
 
 class Network:
@@ -39,77 +39,99 @@ class Network:
         self.numInputNodes = numInputNodes
         self.numHiddenNodes = numHiddenNodes
         self.numOutputNodes = numOutputNodes
-        self.inputWeights = [[random.random() for _ in range(numHiddenNodes)] for _ in range(numInputNodes + 1)] # adding +1 to include a constant w0
+
+        self.inputWeights = [[random.uniform(-1, 1) for _ in range(numHiddenNodes)] for _ in range(numInputNodes + 1)] # adding +1 to include a constant w0
         self.hiddenNodes = [Node(hiddenSigmoid) for _ in range(numHiddenNodes)]
-        self.hiddenWeights = [[random.random() for _ in range(numOutputNodes)] for _ in range(numHiddenNodes + 1)] # adding +1 to include a constant w0
+        self.hiddenWeights = [[random.uniform(-1, 1) for _ in range(numOutputNodes)] for _ in range(numHiddenNodes + 1)] # adding +1 to include a constant w0
         self.outputNodes = [Node(outputSigmoid) for _ in range(numOutputNodes)]
+        self.prevInputWeights = [[0 for _ in range(numHiddenNodes)] for _ in range(numInputNodes + 1)] # adding +1 to include a constant w0
+        self.prevHiddenWeights = [[0 for _ in range(numOutputNodes)] for _ in range(numHiddenNodes + 1)] # adding +1 to include a constant w0
+
+        self.bestAccuracy = 0
+        self.besthiddenWeights = [[0 for _ in range(numOutputNodes)] for _ in range(numHiddenNodes + 1)] # adding +1 to include a constant w0
+        self.bestinputWeights = [[0 for _ in range(numHiddenNodes)] for _ in range(numInputNodes + 1)] # adding +1 to include a constant w0
 
     def reset_nodes(self):
         for h in range(self.numHiddenNodes):
-            self.hiddenNodes[i].reset_node()
+            self.hiddenNodes[h].reset_node()
         for o in range(self.numOutputNodes):
             self.outputNodes[o].reset_node()
     
-    def matrix_multiply(self, node, weights, nodelength, outputlength):
+    def matrix_multiply(self, nodes, weights, nodelength, outputlength):
         total = [0 for _ in range(outputlength)]
         for i in range(nodelength):
             for j in range(outputlength):
-                total[j] += node[i] * weights[i][j]
+                total[j] += nodes[i] * weights[i][j]
         return total
     
     def get_output(self, inputNode, outputNode = False):
+        self.reset_nodes()
         inputNode.append(1) # include a constant
         
         out = self.matrix_multiply(inputNode, self.inputWeights, self.numInputNodes + 1, self.numHiddenNodes)
+        inputNode.pop()
         for i, val in enumerate(out):
             self.hiddenNodes[i].add_val(val)
-        hidden = [self.hiddenNodes[i].get_val for i in range(self.numHiddenNodes)]
+        hidden = [self.hiddenNodes[i].get_val() for i in range(self.numHiddenNodes)]
         hidden.append(1) # include a constant
 
-        out = self.matrix_multiply(hidden, self.outputNodes, self.numHiddenNodes + 1, self.numOutputNodes)
+        out = self.matrix_multiply(hidden, self.hiddenWeights, self.numHiddenNodes + 1, self.numOutputNodes)
         for i, val in enumerate(out):
             self.outputNodes[i].add_val(val)
         
         if outputNode:
             return self.outputNodes
-        return [self.outputNodes[i].get_val for i in range(self.numOutputNodes)]
+        if self.outputNodes[0].sigmoid:
+            return [1 if self.outputNodes[i].get_val() >=0.5 else 0 for i in range(self.numOutputNodes)]
+        best = 0
+        bestIndex = -1
+        for i,node in enumerate(self.outputNodes):
+            if bestIndex == -1 or node.get_val() > best:
+                bestIndex = i
+                best = node.get_val()
+        return [0 if i != bestIndex else 1 for i in range(self.numOutputNodes)]
 
     def back_propogate(self, input, expectedOut):
-        self.reset_nodes()
+        if input is None or expectedOut is None:
+            raise ValueError("Input and expected output cannot be None")
+        
+        if len(expectedOut) != self.numOutputNodes:
+            raise ValueError("Expected output length must match number of output nodes")
+        
         out = self.get_output(input, True)
-
+        
         deltaError = [(expectedOut[i] - out[i].get_val()) * out[i].getDerivative() for i in range(self.numOutputNodes)]
-
-        # backpropogation to the hidden nodes
+        
+        # Backpropagation to the hidden nodes
         deltahidden = [0 for _ in range(self.numHiddenNodes + 1)]
-        for i in range(self.numHiddenNodes + 1):
-            deltahidden[i] = self.hiddenNodes[i].getDerivative() * sum([deltaError[j] * self.hiddenWeights[i][j] for j in range(self.numOutputNodes)])
-
+        for i in range(self.numHiddenNodes):
+            deltahidden[i] = self.hiddenNodes[i].getDerivative() * sum(deltaError[j] * self.hiddenWeights[i][j] for j in range(self.numOutputNodes))
+        deltahidden[self.numHiddenNodes] = sum(deltaError[j] * self.hiddenWeights[self.numHiddenNodes][j] for j in range(self.numOutputNodes))
+        
         for i in range(self.numHiddenNodes + 1):
             for j in range(self.numOutputNodes):
-                if i == self.numHiddenNodes:
-                    self.hiddenWeights[i][j] += self.learningRate * deltahidden[j] * self.hiddenNodes[i].get_val()
-                else: 
-                    self.hiddenWeights[i][j] += self.learningRate * deltahidden[j] # * 1  constant w0
-
-        # repeat backprogogation to the input node
-        deltaInput = [0 for _ in range(self.numInputNodes + 1)]
-        for i in range(self.numInputNodes + 1):
-            deltaInput[i] = self.inputWeights[i].getDerivative() * sum([deltahidden[j] * self.inputWeights[i][j] for j in range(self.numHiddenNodes + 1)])
+                if i < self.numHiddenNodes:
+                    self.prevHiddenWeights[i][j] = self.prevHiddenWeights[i][j] * self.momentumCnst + self.learningRate * deltaError[j] * self.hiddenNodes[i].get_val() # momentum + learning rate * deltaError * hiddenNode
+                    self.hiddenWeights[i][j] += self.prevHiddenWeights[i][j]
+                else:
+                    self.prevHiddenWeights[i][j] = self.prevHiddenWeights[i][j] * self.momentumCnst + self.learningRate * deltaError[j] # * 1 (constant w0)
+                    self.hiddenWeights[i][j] += self.prevHiddenWeights[i][j]
         
         for i in range(self.numInputNodes + 1):
-            for j in range(self.numHiddenNodes + 1):
-                if i == self.numInputNodes:
-                    self.inputWeights[i][j] += self.learningRate * deltaInput[j] * self.hiddenNodes[j].get_val()
+            for j in range(self.numHiddenNodes):
+                if i < self.numInputNodes:
+                    self.prevInputWeights[i][j] = self.prevInputWeights[i][j] * self.momentumCnst + self.learningRate * deltahidden[j] * input[i] # momentum + learning rate * deltahidden * inputnode
+                    self.inputWeights[i][j] += self.prevInputWeights[i][j]
                 else:
-                    self.inputWeights[i][j] += self.learningRate * deltaInput[j] # * 1  constant w0
+                    self.prevInputWeights[i][j] = self.prevInputWeights[i][j] * self.momentumCnst + self.learningRate * deltahidden[j] # * 1 (constant w0)
+                    self.inputWeights[i][j] += self.prevInputWeights[i][j]
     
     def output_nodes_and_weights(self):
         hiddenLength = 0
         for i in range(self.numInputNodes + 1):
             txt = str(["{:.1f}".format(i) for i in self.inputWeights[i]])
             if i < self.numHiddenNodes:
-                txt += "  [" + "{:.1f}".format(self.hiddenNodes[i].get_val()) + "]  "
+                txt += "  [" + "{:2.1f}".format(self.hiddenNodes[i].get_val()) + "]  "
             else:
                 txt += "         "
             if i < self.numHiddenNodes + 1:
@@ -123,6 +145,24 @@ class Network:
             if i < self.numOutputNodes:
                 txt += "  [" + "{:.1f}".format(self.outputNodes[i].get_val()) + "]"
             print(txt)
+    
+    def get_accuracy(self, testSet):
+        correct = 0
+        for data in testSet:
+            out = self.get_output(data['attributes'])
+            if out == data['target']:
+                correct += 1
+        return correct / len(testSet)
+    
+    def update_best_weights(self, accuracy):
+        if accuracy > self.bestAccuracy:
+            self.bestAccuracy = accuracy
+            self.bestInputWeights = [[i for i in row] for row in self.inputWeights]
+            self.bestHiddenWeights = [[i for i in row] for row in self.hiddenWeights]
+    
+    def set_network_to_best_weights(self):
+        self.inputWeights = [[i for i in row] for row in self.bestInputWeights]
+        self.hiddenWeights = [[i for i in row] for row in self.bestHiddenWeights]
 
 def read_settings_file(file):
     global LEARNING_RATE, MOMENTUM_CONSTANT, NUM_ITERATIONS, NUM_HIDDEN_NODES
@@ -180,10 +220,9 @@ def read_data_file(file):
                 data = {}
                 instance = []
                 inputs, outputs = line.split('  ')
-                print(inputs)
                 for i, val in enumerate(inputs.split()):
                     if len (ATTRIBUTES[attList[i]]) == 1:
-                        instance.append(val)
+                        instance.append(int(val))
                     else:
                         attVals = [ 0 for _ in range(len(ATTRIBUTES[attList[i]]))]
                         for i, item in enumerate(ATTRIBUTES[attList[i]]):
@@ -192,7 +231,7 @@ def read_data_file(file):
                                 break
                         instance.extend(attVals)
                 data['attributes'] = instance
-                data['target'] = outputs.split()
+                data['target'] = [int(i) for i in outputs.split()]
                 dataList.append(data)
             else:
                 data = {}
@@ -202,7 +241,7 @@ def read_data_file(file):
                     if i+1 == len(inputs):
                         break
                     elif len (ATTRIBUTES[attList[i]]) == 1:
-                        instance.append(val)
+                        instance.append(float(val))
                     else:
                         attVals = [ 0 for _ in range(len(ATTRIBUTES[attList[i]]))]
                         for i, item in enumerate(ATTRIBUTES[attList[i]]):
@@ -211,10 +250,7 @@ def read_data_file(file):
                                 break
                         instance.extend(attVals)
                 data['attributes'] = instance
-                if ':' in inputs[-1]:
-                    data['target'] = 'binary'
-                else:
-                    data['target'] = inputs[-1]
+                data['target'] = [ 1 if val in inputs[-1] else 0 for val in TARGET]
                 dataList.append(data)
     return dataList
 
@@ -224,27 +260,36 @@ if __name__ == "__main__":
         print("No arguments provided.")
         exit(-1)
     
+    if len(sys.argv) < 5:
+        print("Invalid number of arguments.")
+        exit(-1)
+    
     settingsFile = sys.argv[1]
     read_settings_file(settingsFile)
-    print('Number of Hiden Nodes: ', NUM_HIDDEN_NODES)
-    print('Learning Rate: ', LEARNING_RATE)
-    print('Momentum Constant: ', MOMENTUM_CONSTANT)
-    print('Number of Iterations: ', NUM_ITERATIONS)
 
     attributeFile = sys.argv[2]
     read_attributes_file(attributeFile)
-    print(ATTRIBUTES)
-    print('Number of Input Nodes: ', NUM_INPUT_NODES)
-    print('Number of Output Nodes: ', NUM_OUTPUT_NODES)
-    print('Target: ', TARGET)
 
-    dataFile = sys.argv[3]
-    trainingSet = read_data_file(dataFile)
-    for data in trainingSet:
-        print(data)
-
-    net = Network(NUM_INPUT_NODES, NUM_HIDDEN_NODES, NUM_OUTPUT_NODES, LEARNING_RATE, MOMENTUM_CONSTANT)
-    net.output_nodes_and_weights()  
-
+    trainFile = sys.argv[3]
+    trainingSet = read_data_file(trainFile)
     
-    
+    testFile = sys.argv[4]
+    testingSet = read_data_file(testFile)
+
+    net = Network(NUM_INPUT_NODES, NUM_HIDDEN_NODES, NUM_OUTPUT_NODES, LEARNING_RATE, MOMENTUM_CONSTANT, True, True)
+    print('Training Network...')
+    cnt = 0
+    for _ in range(NUM_ITERATIONS):
+        acc = 0
+        for i in trainingSet:
+            net.back_propogate(i['attributes'], i['target'])
+        acc = net.get_accuracy(testingSet)
+        net.update_best_weights(acc)
+        cnt += 1
+        #if cnt % 10 == 0:
+        #    print('Accuracy: ' + str(acc))
+    net.set_network_to_best_weights()
+    print('Finished')
+    print('best weights')
+    print('accuracy: ' + str(net.get_accuracy(testingSet)))
+    net.output_nodes_and_weights()
