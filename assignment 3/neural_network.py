@@ -10,6 +10,8 @@ NUM_HIDDEN_NODES = 2
 NUM_OUTPUT_NODES = 1
 ATTRIBUTES = {}
 TARGET = []
+MAX_NOISE_LEVEL = 20
+NOISE_INCREMENT = 2
 
 class Node:
     def __init__(self, sigmoid):
@@ -161,8 +163,8 @@ class Network:
             self.bestHiddenWeights = [[i for i in row] for row in self.hiddenWeights]
     
     def set_network_to_best_weights(self):
-        self.inputWeights = [[i for i in row] for row in self.bestInputWeights]
-        self.hiddenWeights = [[i for i in row] for row in self.bestHiddenWeights]
+        self.inputWeights = self.bestInputWeights
+        self.hiddenWeights = self.bestHiddenWeights
 
 def read_settings_file(file):
     global LEARNING_RATE, MOMENTUM_CONSTANT, NUM_ITERATIONS, NUM_HIDDEN_NODES
@@ -254,6 +256,27 @@ def read_data_file(file):
                 dataList.append(data)
     return dataList
 
+def add_noise(trainingSet, noisePercent):
+    global ATTRIBUTES
+    trainingLength = len(trainingSet)
+    for _ in range(int(trainingLength * noisePercent)):
+        index = random.randint(0, trainingLength - 1)
+        attIndex = random.randint(0, len(ATTRIBUTES) - 1)
+        att = list(ATTRIBUTES.keys())[attIndex]
+        if ATTRIBUTES[att] == ['binary']:
+            if trainingSet[index]['attributes'][attIndex] == 0:
+                trainingSet[index]['attributes'][attIndex] = 1
+            else:
+                trainingSet[index]['attributes'][attIndex] = 0
+        elif ATTRIBUTES[att] == ['continuous']:
+            trainingSet[index]['attributes'][attIndex] += random.uniform(-1, 1)
+        else:
+            for i in ATTRIBUTES[att]:
+                if trainingSet[index]['attributes'][attIndex] == i:
+                    while trainingSet[index]['attributes'][attIndex] == i:
+                        trainingSet[index]['attributes'][attIndex] = ATTRIBUTES[att][random.randint(0, len(ATTRIBUTES[att]) - 1)]
+                    break
+
 if __name__ == "__main__":
 
     if len(sys.argv) <= 1:
@@ -276,20 +299,49 @@ if __name__ == "__main__":
     testFile = sys.argv[4]
     testingSet = read_data_file(testFile)
 
-    net = Network(NUM_INPUT_NODES, NUM_HIDDEN_NODES, NUM_OUTPUT_NODES, LEARNING_RATE, MOMENTUM_CONSTANT, True, True)
-    print('Training Network...')
-    cnt = 0
-    for _ in range(NUM_ITERATIONS):
-        acc = 0
-        for i in trainingSet:
-            net.back_propogate(i['attributes'], i['target'])
-        acc = net.get_accuracy(testingSet)
-        net.update_best_weights(acc)
-        cnt += 1
-        #if cnt % 10 == 0:
-        #    print('Accuracy: ' + str(acc))
-    net.set_network_to_best_weights()
-    print('Finished')
-    print('best weights')
-    print('accuracy: ' + str(net.get_accuracy(testingSet)))
-    net.output_nodes_and_weights()
+    noisy = False
+    index = 5
+    while index < len(sys.argv):
+        if sys.argv[index] == '-n':
+            noisy = True
+        index += 1
+
+    if not noisy:
+        net = Network(NUM_INPUT_NODES, NUM_HIDDEN_NODES, NUM_OUTPUT_NODES, LEARNING_RATE, MOMENTUM_CONSTANT, True, True)
+        print('Training Network...')
+        cnt = 0
+        for _ in range(NUM_ITERATIONS):
+            acc = 0
+            for i in trainingSet:
+                net.back_propogate(i['attributes'], i['target'])
+            acc = net.get_accuracy(testingSet)
+            net.update_best_weights(acc)
+            cnt += 1
+            #if cnt % 10 == 0:
+            #    print('Accuracy: ' + str(acc))
+        net.set_network_to_best_weights()
+        print('Finished')
+        print('best weights')
+        print('accuracy: ' + str(net.get_accuracy(testingSet)))
+        net.output_nodes_and_weights()
+    else:
+        noiseLevel = 0.0
+        while noiseLevel <= MAX_NOISE_LEVEL:
+            net = Network(NUM_INPUT_NODES, NUM_HIDDEN_NODES, NUM_OUTPUT_NODES, LEARNING_RATE, MOMENTUM_CONSTANT, True, True)
+            print('Noise Level: ' + str(noiseLevel))
+            print('Training Network...')
+            cnt = 0
+            for _ in range(NUM_ITERATIONS):
+                acc = 0
+                for i in trainingSet:
+                    net.back_propogate(i['attributes'], i['target'])
+                acc = net.get_accuracy(testingSet)
+                net.update_best_weights(acc)
+                cnt += 1
+            net.set_network_to_best_weights()
+            print('Finished')
+            print('best weights')
+            print('accuracy: ' + str(net.get_accuracy(testingSet)))
+            net.output_nodes_and_weights()
+            noiseLevel += NOISE_INCREMENT
+            add_noise(trainingSet, NOISE_INCREMENT/100)

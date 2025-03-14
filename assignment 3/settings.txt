@@ -1,4 +1,4 @@
-Number Hidden=3
-Learning Rate=0.8
+Number Hidden=4
+Learning Rate=0.08
 Momentum=0.03
 Number Iterations=2500
