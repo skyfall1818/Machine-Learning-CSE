@@ -1,0 +1,4 @@
+Population Size=500
+Replacement Rate=0.80
+Mutation Rate=0.03
+Number Iterations=3000
