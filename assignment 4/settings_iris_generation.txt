@@ -1,5 +1,5 @@
 Population Size=300
-Replacement Rate=0.70
+Replacement Rate=0.60
 Mutation Rate=0.05
 Number Iterations=500
 Expanding Mutation Rate=0.005

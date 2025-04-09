@@ -1,7 +1,7 @@
-Population Size=300
-Replacement Rate=0.70
+Population Size=100
+Replacement Rate=0.80
 Mutation Rate=0.05
-Number Iterations=500
+Number Iterations=200
 Expanding Mutation Rate=0.005
 # strategies: F = fitness selection | T = tournament selection | R = Rank selection
 Strategy=F
