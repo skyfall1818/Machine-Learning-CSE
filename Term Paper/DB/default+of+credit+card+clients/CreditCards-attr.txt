@@ -1,0 +1,25 @@
+LIMIT_BAL continuous
+SEX continuous
+EDUCATION continuous
+MARRIAGE continuous
+AGE continuous
+PAY_0 continuous
+PAY_2 continuous
+PAY_3 continuous
+PAY_4 continuous
+PAY_5 continuous
+PAY_6 continuous
+BILL_AMT1 continuous
+BILL_AMT2 continuous
+BILL_AMT3 continuous
+BILL_AMT4 continuous
+BILL_AMT5 continuous
+BILL_AMT6 continuous
+PAY_AMT1 continuous
+PAY_AMT2 continuous
+PAY_AMT3 continuous
+PAY_AMT4 continuous
+PAY_AMT5 continuous
+PAY_AMT6 continuous
+
+Y N

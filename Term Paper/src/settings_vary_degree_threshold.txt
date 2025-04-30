@@ -1,0 +1,8 @@
+Number Hidden=5
+Learning Rate=0.0001
+Momentum=0.00001
+Number Iteration=250
+Alpha=3
+Beta=2
+Degree=1
+D Increment=1
